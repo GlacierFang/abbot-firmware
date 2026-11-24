@@ -103,7 +103,10 @@ static void ui_styles_init(void)
 static lv_obj_t *ui_make_root(lv_obj_t *parent)
 {
     lv_obj_t *root = lv_obj_create(parent);
-    lv_obj_set_style_all(root, &s_style_root, 0);
+    /* LVGL 8.x 没有 lv_obj_set_style_all (那是 v9 的 API) —— 等价写法是
+     * 先清掉默认样式再挂自己的。 */
+    lv_obj_remove_style_all(root);
+    lv_obj_add_style(root, &s_style_root, LV_PART_MAIN);
     lv_obj_set_size(root, 320, 480);
     lv_obj_clear_flag(root, LV_OBJ_FLAG_SCROLLABLE);
     return root;
@@ -172,7 +175,8 @@ static lv_obj_t *ui_make_card(lv_obj_t *parent)
 {
     lv_obj_t *card = lv_obj_create(parent);
     lv_obj_set_size(card, 280, 96);
-    lv_obj_set_style_all(card, &s_style_card, 0);
+    lv_obj_remove_style_all(card);
+    lv_obj_add_style(card, &s_style_card, LV_PART_MAIN);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
     return card;
 }
@@ -545,7 +549,8 @@ static void ui_build_overlays(lv_obj_t *parent)
 
         lv_obj_t *card = lv_obj_create(root);
         lv_obj_set_size(card, 280, 160);
-        lv_obj_set_style_all(card, &s_style_card, 0);
+        lv_obj_remove_style_all(card);
+        lv_obj_add_style(card, &s_style_card, LV_PART_MAIN);
         lv_obj_align(card, LV_ALIGN_CENTER, 0, 0);
 
         lv_obj_t *label = lv_label_create(card);
