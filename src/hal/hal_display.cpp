@@ -29,6 +29,9 @@
 #include <Arduino.h>
 
 #include "board_config.h"
+/* hal_display_blit_rgb565 声明在 hal_shared.h 的 extern "C" 块里 ——
+ * 必须包含它, 否则定义的符号是 C++ mangled 名, 链接时对不上。 */
+#include "hal_shared.h"
 
 #include <LovyanGFX.hpp>
 
