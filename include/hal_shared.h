@@ -135,7 +135,8 @@ typedef struct {
 /* ===================== HAL 内部互调（不在 §六 对外契约里） ===================== */
 hal_status_t hal_storage_write_binary(const char *path, const uint8_t *data, uint32_t len);
 void hal_camera_release_jpeg(uint8_t *jpg);
-hal_status_t hal_audio_read_chunk(int16_t *dst, size_t samples);
+/* 取一段 PCM：>=0 为实际取到的采样点数；<0 为 hal_status_t 错误码 */
+int hal_audio_read_chunk(int16_t *dst, size_t samples);
 hal_status_t hal_audio_write_pcm(const int16_t *pcm, size_t samples);
 void hal_audio_set_muted(bool muted);
 

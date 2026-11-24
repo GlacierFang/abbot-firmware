@@ -166,10 +166,10 @@ hal_status_t hal_audio_start_record(void)
  * 同时写入 PSRAM 环形缓冲（保留最近 10 秒），并拷贝给调用方。
  * 返回实际取到的采样点数；0 表示驱动已无数据。
  */
-hal_status_t hal_audio_read_chunk(int16_t *dst, size_t samples)
+int hal_audio_read_chunk(int16_t *dst, size_t samples)
 {
     if (s_state != AUDIO_RECORDING || dst == NULL || samples == 0) {
-        return HAL_ERR_INVALID;
+        return (int)HAL_ERR_INVALID;
     }
     if (samples > AUDIO_CHUNK_MAX) {
         samples = AUDIO_CHUNK_MAX;
@@ -180,7 +180,7 @@ hal_status_t hal_audio_read_chunk(int16_t *dst, size_t samples)
     size_t got = 0;
     esp_err_t err = i2s_read(I2S_NUM_0, raw, bytes, &got, pdMS_TO_TICKS(200));
     if (err != ESP_OK || got == 0) {
-        return HAL_ERR_TIMEOUT;
+        return (int)HAL_ERR_TIMEOUT;
     }
     size_t n = got / sizeof(int32_t);
 
