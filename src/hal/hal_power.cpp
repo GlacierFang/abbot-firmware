@@ -99,7 +99,7 @@ hal_status_t hal_power_enter_light_sleep(void)
     hal_display_set_backlight(0);
 
     /* GPIO 0 下压唤醒（低有效）+ RTC 定时唤醒（课程闹钟） */
-    esp_sleep_enable_ext0_wakeup(WAKE_GPIO, 0);
+    esp_sleep_enable_ext0_wakeup((gpio_num_t)WAKE_GPIO, 0);
     esp_sleep_enable_timer_wakeup(60ULL * 1000000ULL);
 
     esp_light_sleep_start();
@@ -113,7 +113,7 @@ hal_status_t hal_power_enter_deep_sleep(void)
 {
     Serial.printf("[%s] entering deep sleep\n", TAG);
     hal_display_set_backlight(0);
-    esp_sleep_enable_ext0_wakeup(WAKE_GPIO, 0);
+    esp_sleep_enable_ext0_wakeup((gpio_num_t)WAKE_GPIO, 0);
     esp_deep_sleep_start();
     /* 不会返回 */
     return HAL_OK;

@@ -69,7 +69,7 @@ static void joy_post(joystick_event_type_t type, uint32_t hold_ms, int32_t delta
 
 hal_status_t hal_joystick_init(void)
 {
-    pinMode(JOY_PIN_SW, INPUT_PULLUP);
+    pinMode((uint8_t)JOY_PIN_SW, INPUT_PULLUP);
     analogSetPinAttenuation(JOY_PIN_VRX, ADC_11db);
     analogSetPinAttenuation(JOY_PIN_VRY, ADC_11db);
 

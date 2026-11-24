@@ -204,7 +204,7 @@ hal_status_t hal_storage_read_text(const char *path, char *buf, uint32_t max_len
             return HAL_ERR_NOT_FOUND;
         }
     }
-    size_t n = f.read(buf, max_len - 1);
+    size_t n = f.read((uint8_t *)buf, max_len - 1);
     f.close();
     buf[n] = '\0';
     if (out_len != NULL) {
