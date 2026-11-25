@@ -1,31 +1,31 @@
 ### build 目录内容
-total 45360
-drwxr-xr-x 12 runner runner     4096 Nov 25 02:49 .
-drwxr-xr-x  3 runner runner     4096 Nov 25 02:48 ..
--rw-r--r--  1 runner runner  2055760 Nov 25 02:49 .sconsign311.dblite
-drwxr-xr-x  3 runner runner     4096 Nov 25 02:48 FrameworkArduino
--rw-r--r--  1 runner runner    15104 Nov 25 02:48 bootloader.bin
--rw-r--r--  1 runner runner  1273872 Nov 25 02:49 firmware.bin
--rwxr-xr-x  1 runner runner 23512996 Nov 25 02:49 firmware.elf
--rw-r--r--  1 runner runner 15198496 Nov 25 02:49 firmware.map
-drwxr-xr-x  3 runner runner     4096 Nov 25 02:48 lib30b
-drwxr-xr-x  3 runner runner     4096 Nov 25 02:48 lib7aa
-drwxr-xr-x  3 runner runner     4096 Nov 25 02:48 lib989
--rw-r--r--  1 runner runner  4327538 Nov 25 02:48 libFrameworkArduino.a
-drwxr-xr-x  3 runner runner     4096 Nov 25 02:48 liba33
-drwxr-xr-x  3 runner runner     4096 Nov 25 02:48 libb2c
-drwxr-xr-x  3 runner runner     4096 Nov 25 02:48 libc3a
-drwxr-xr-x  3 runner runner     4096 Nov 25 02:48 libe70
-drwxr-xr-x  3 runner runner     4096 Nov 25 02:48 libf02
--rw-r--r--  1 runner runner     3072 Nov 25 02:48 partitions.bin
-drwxr-xr-x  5 runner runner     4096 Nov 25 02:48 src
+total 45388
+drwxr-xr-x 12 runner runner     4096 Nov 25 07:31 .
+drwxr-xr-x  3 runner runner     4096 Nov 25 07:31 ..
+-rw-r--r--  1 runner runner  2057660 Nov 25 07:31 .sconsign311.dblite
+drwxr-xr-x  3 runner runner     4096 Nov 25 07:31 FrameworkArduino
+-rw-r--r--  1 runner runner    15104 Nov 25 07:31 bootloader.bin
+-rw-r--r--  1 runner runner  1275664 Nov 25 07:31 firmware.bin
+-rwxr-xr-x  1 runner runner 23519524 Nov 25 07:31 firmware.elf
+-rw-r--r--  1 runner runner 15214498 Nov 25 07:31 firmware.map
+drwxr-xr-x  3 runner runner     4096 Nov 25 07:31 lib30b
+drwxr-xr-x  3 runner runner     4096 Nov 25 07:31 lib7aa
+drwxr-xr-x  3 runner runner     4096 Nov 25 07:31 lib989
+-rw-r--r--  1 runner runner  4327538 Nov 25 07:31 libFrameworkArduino.a
+drwxr-xr-x  3 runner runner     4096 Nov 25 07:31 liba33
+drwxr-xr-x  3 runner runner     4096 Nov 25 07:31 libb2c
+drwxr-xr-x  3 runner runner     4096 Nov 25 07:31 libc3a
+drwxr-xr-x  3 runner runner     4096 Nov 25 07:31 libe70
+drwxr-xr-x  3 runner runner     4096 Nov 25 07:31 libf02
+-rw-r--r--  1 runner runner     3072 Nov 25 07:31 partitions.bin
+drwxr-xr-x  5 runner runner     4096 Nov 25 07:31 src
 
 ### 收集到的产物
   bootloader.bin  15104 字节
-  firmware.bin  1273872 字节
+  firmware.bin  1275664 字节
   partitions.bin  3072 字节
   共 3 个 bin
 ### sha256
 2a71d69b471e20c2bac7fb469f3c6a807b3ebee780e348e5889db0da849ca363  bootloader.bin
-c6238106565d73444616a5a3a1c900b9a1624d3970d31691a7ffb7d56a0d3774  firmware.bin
+9a6073051a066b21afb8ad55e1e8dca218316e97a57f5b3792d8e32510ea2b4e  firmware.bin
 aaae2888c5a6a348004b5b436f47abb25ae32e72d9003902955a998eda723edd  partitions.bin
