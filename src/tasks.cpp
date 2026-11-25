@@ -84,6 +84,8 @@ static void task_ui_fsm(void *arg)
 
         lv_tick_inc(5);
         lv_timer_handler();
+        /* 番茄钟等需要持续推进的界面状态（毫秒计数） */
+        ui_router_tick();
         vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(5));
     }
 }
