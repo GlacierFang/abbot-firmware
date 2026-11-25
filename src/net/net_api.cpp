@@ -74,7 +74,7 @@ static bool g_profile_loaded = false;
 static bool net_http_exchange(const char *host, const char *method, const char *url,
                               const char *timestamp, const char *signature,
                               const char *body, size_t body_len,
-                              bool signed, char *resp_buf, size_t resp_cap,
+                              bool need_sign, char *resp_buf, size_t resp_cap,
                               size_t *resp_len, nr_http_response_t *parsed);
 
 /** 把 Unix 时间戳格式化成 UTC+8 的 `YYYY-MM-DDTHH:MM:SS`（不用 gmtime，避免时区依赖）。 */
@@ -394,13 +394,13 @@ int net_profile_remaining_quota(void)
 
 /**
  * 阻塞式 HTTP 往返（只在 Core 0 的 `task_net_worker` 里调用）。
- * signed=true 时按 doc/05 §3.2 带设备签名头。
+ * need_sign=true 时按 doc/05 §3.2 带设备签名头。
  * resp_buf 收到的是**原始响应字节**（验签必须用它）。
  */
 static bool net_http_exchange(const char *host, const char *method, const char *url,
                               const char *timestamp, const char *signature,
                               const char *body, size_t body_len,
-                              bool signed, char *resp_buf, size_t resp_cap,
+                              bool need_sign, char *resp_buf, size_t resp_cap,
                               size_t *resp_len, nr_http_response_t *parsed)
 {
     if (resp_buf == NULL || resp_cap == 0 || parsed == NULL) {
@@ -419,7 +419,7 @@ static bool net_http_exchange(const char *host, const char *method, const char *
 
     /* 签名与时间戳由调用方给出 —— 必须与组装信封时用的是同一份，
      * 否则服务端按 body 复算的签名与这里发出的对不上（doc/05 §3.2）。 */
-    if (signed && (timestamp == NULL || signature == NULL ||
+    if (need_sign && (timestamp == NULL || signature == NULL ||
                    timestamp[0] == '\0' || signature[0] == '\0')) {
         client.stop();
         Serial.printf("[%s] 缺少签名参数\n", NET_TAG);
@@ -436,7 +436,7 @@ static bool net_http_exchange(const char *host, const char *method, const char *
     client.print("X-Device-Id: ");
     client.print(net_device_id());
     client.print("\r\n");
-    if (signed) {
+    if (need_sign) {
         client.print("X-Timestamp: ");
         client.print(timestamp);
         client.print("\r\n");
