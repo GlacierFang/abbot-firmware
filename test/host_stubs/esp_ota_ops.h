@@ -9,8 +9,11 @@
  *   - `esp_ota_write()` 返回的是 **esp_err_t**（不是写进去的字节数），
  *     成功就是 ESP_OK —— 老版本 ESP-IDF 才是返回字节数。
  *   - `esp_ota_end()` 会**顺手把启动分区切到刚写的那个分区**。
- *   - `esp_ota_get_next_update_partition()` 返回的是**相对于当前运行分区**的
- *     下一个可写分区：跑 ota_0 时返回 ota_1，跑 ota_1 时返回 ota_0。
+ *   - `esp_ota_get_next_update_partition()` **带一个参数**：
+ *     `esp_ota_get_next_update_partition(const esp_partition_t *start_from)`。
+ *     传 `NULL` = 从当前运行的分区往后找：跑 ota_0 时返回 ota_1，跑 ota_1 时
+ *     返回 ota_0。老版本 IDF 才是无参的那个 —— 写错编译期就报
+ *     「too few arguments」。
  */
 #ifndef ABBOT_STUB_ESP_OTA_OPS_H
 #define ABBOT_STUB_ESP_OTA_OPS_H
@@ -54,7 +57,7 @@ typedef enum {
     ESP_OTA_IMG_NEW = 0x81,
 } esp_ota_img_states_t;
 
-const esp_partition_t *esp_ota_get_next_update_partition(void);
+const esp_partition_t *esp_ota_get_next_update_partition(const esp_partition_t *start_from);
 const esp_partition_t *esp_ota_get_running_partition(void);
 const esp_partition_t *esp_ota_get_boot_partition(void);
 esp_err_t esp_ota_begin(const esp_partition_t *p, size_t update_size,

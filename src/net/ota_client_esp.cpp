@@ -423,7 +423,8 @@ static ota_result_t ota_download_write_and_activate(const char *bin_url,
     }
 
     /* ---- 目标分区（备用分区，绝不是正在跑的那个） ---- */
-    const esp_partition_t *target = esp_ota_get_next_update_partition();
+    /* 传 NULL = 从当前运行的分区往后找下一个可写分区（跑 app0 得 app1，反之亦然） */
+    const esp_partition_t *target = esp_ota_get_next_update_partition(NULL);
     if (target == NULL || target->size < OTA_APP_PARTITION_SIZE) {
         client.stop();
         return OTA_ERR_INTERNAL;
@@ -658,7 +659,7 @@ bool ota_start(void)
  */
 static void ota_revert_to_previous(void)
 {
-    const esp_partition_t *prev = esp_ota_get_next_update_partition();
+    const esp_partition_t *prev = esp_ota_get_next_update_partition(NULL);
     if (prev != NULL) {
         esp_ota_set_boot_partition(prev);
         Serial.printf("[%s] 启动分区已指回上一版\n", TAG);
