@@ -125,13 +125,13 @@ static void ota_page_render(char *out, size_t cap)
 void ui_ota_page_refresh(void)
 {
     ota_status_t st;
-    char text[OTA_TEXT_MAX];
 
     ota_get_status(&st);
     s_ota_seq = st.seq;
-    ota_page_render(text, sizeof(text));
+    /* 渲染到**静态**缓冲：界面核的栈只有 4KB，不能在这里放大块局部变量 */
+    ota_page_render(s_ota_text, sizeof(s_ota_text));
     if (s_ota_body != NULL) {
-        lv_label_set_text(s_ota_body, text);
+        lv_label_set_text(s_ota_body, s_ota_text);
     }
 }
 
