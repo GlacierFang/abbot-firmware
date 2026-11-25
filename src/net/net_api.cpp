@@ -781,7 +781,7 @@ bool net_download_signed_asset(const char *signed_url, const char *save_path,
     storage_asset_job_t *job = (storage_asset_job_t *)malloc(sizeof(storage_asset_job_t));
     if (done == NULL || job == NULL) {
         if (done != NULL) {
-            xSemaphoreDelete(done);
+            vSemaphoreDelete(done);
         }
         if (job != NULL) {
             free(job);
@@ -809,7 +809,7 @@ bool net_download_signed_asset(const char *signed_url, const char *save_path,
         ok = (job->result == HAL_OK);
     }
 cleanup:
-    xSemaphoreDelete(done);
+    vSemaphoreDelete(done);
     if (job->data != NULL) {
         heap_caps_free(job->data);
     }
