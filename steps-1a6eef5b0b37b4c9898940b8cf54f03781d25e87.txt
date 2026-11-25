@@ -1,0 +1,15 @@
+commit: 1a6eef5b0b37b4c9898940b8cf54f03781d25e87
+run:    https://github.com/GlacierFang/abbot-firmware/actions/runs/45595671789
+steps:
+{
+  "collect": {
+    "outputs": {},
+    "outcome": "success",
+    "conclusion": "success"
+  },
+  "push_fwbin": {
+    "outputs": {},
+    "outcome": "success",
+    "conclusion": "success"
+  }
+}
