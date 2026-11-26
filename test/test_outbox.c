@@ -636,6 +636,23 @@ static void test_voice_context(void)
                                 card, sizeof card) != OUTBOX_OK, "目标缓冲不足不解析（不截断）");
 }
 
+static void test_classify_result(void)
+{
+    /* 云端真答了 */
+    CHECK(outbox_classify_result(0) == OUTBOX_RESULT_DONE, "biz=0 视为成功");
+    /* 4003 没听清 / 4004 学段未设 / 4291 配额用完：内容或配置问题，重试无用，丢弃 */
+    CHECK(outbox_classify_result(4003) == OUTBOX_RESULT_DROP, "4003 丢弃不重试");
+    CHECK(outbox_classify_result(4004) == OUTBOX_RESULT_DROP, "4004 丢弃不重试");
+    CHECK(outbox_classify_result(4291) == OUTBOX_RESULT_DROP, "4291 丢弃不重试");
+    /* 4290 并发被拒 / 5001 上游故障 / 未知码：保文件，等下一轮 */
+    CHECK(outbox_classify_result(4290) == OUTBOX_RESULT_RETRY, "4290 可重试");
+    CHECK(outbox_classify_result(5001) == OUTBOX_RESULT_RETRY, "5001 可重试");
+    CHECK(outbox_classify_result(4001) == OUTBOX_RESULT_RETRY, "4001 可重试");
+    CHECK(outbox_classify_result(9999) == OUTBOX_RESULT_RETRY, "未知码可重试");
+    /* 传输层失败：根本没有业务码 */
+    CHECK(outbox_classify_result(-1) == OUTBOX_RESULT_RETRY, "传输失败可重试");
+}
+
 int main(void)
 {
     printf("=== abbot 离线队列（outbox）测试 ===\n");
@@ -653,6 +670,7 @@ int main(void)
     test_load_corrupt_falls_back_to_bak();
     test_delete_and_read_media();
     test_voice_context();
+    test_classify_result();
     printf("\n=== %d checks, %d failures ===\n", g_checks, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

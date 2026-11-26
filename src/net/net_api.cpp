@@ -1169,21 +1169,41 @@ int net_outbox_flush(void)
             continue;   /* 其它类型暂不支持补传 */
         }
         int biz = -1;
-        if (net_outbox_send_entry(e, &biz)) {
-            /* 成功：从索引移除 + 删掉关联文件（doc/04 §3.5 清理铁律）。 */
-            outbox_delete_file(e->image_path);
-            outbox_delete_file(e->pcm_path);
-            outbox_remove(&q, i);
+        bool sent = net_outbox_send_entry(e, &biz);
+        /*
+         * 三态处置（doc/04 §3.5）：
+         *   DONE  — 云端真答了：出队 + 删关联文件；
+         *   DROP  — 云端明确拒收且重试无用（4003 没听清）：出队 + 删文件，
+         *            同一条录音再发一万次结果一样；
+         *   RETRY — 传输失败或云端暂时性错误（4290 并发被拒 / 4291 配额 /
+         *            5001 上游异常）：**文件留着**，等下一轮。
+         *
+         * 早先这里只看 `sent`（它只代表信封层成功，业务错也是 true），
+         * 导致任何业务错都走「成功」分支 —— 4290 / 5001 本可重试，
+         * 用户的录音却被永久删除。这是本轮修的缺陷。
+         */
+        int disp = sent ? outbox_classify_result(biz) : OUTBOX_RESULT_RETRY;
+        if (disp == OUTBOX_RESULT_RETRY) {
+            /* 可重试：文件保留，重试次数 +1，标成待重试。
+             * 这次不继续发下一条 —— 网络多半还不通。 */
+            e->retry_count++;
+            e->status = OUTBOX_STATUS_RETRY;
             outbox_store(&q);
-            Serial.printf("[%s] 补传完成 1 条\n", NET_TAG);
-            return 1;
+            Serial.printf("[%s] 补传失败(biz=%d)，重试 %d 次\n", NET_TAG, biz,
+                          (int)e->retry_count);
+            return 0;
         }
-        /* 失败：重试次数 +1，标成待重试。这次不继续发下一条 —— 网络多半还不通。 */
-        e->retry_count++;
-        e->status = OUTBOX_STATUS_RETRY;
+        /* DONE / DROP：这一条不再重试，出队并清掉关联文件。 */
+        outbox_delete_file(e->image_path);
+        outbox_delete_file(e->pcm_path);
+        outbox_remove(&q, i);
         outbox_store(&q);
-        Serial.printf("[%s] 补传失败，重试 %d 次\n", NET_TAG, (int)e->retry_count);
-        return 0;
+        if (disp == OUTBOX_RESULT_DROP) {
+            Serial.printf("[%s] 补传被拒(biz=%d)，重试无用，已丢弃\n", NET_TAG, biz);
+        } else {
+            Serial.printf("[%s] 补传完成 1 条\n", NET_TAG);
+        }
+        return 1;
     }
     return 0;
 }

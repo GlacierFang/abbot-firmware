@@ -223,6 +223,57 @@ int outbox_decode_context(const char *ctx,
                            char *pack_id, size_t pack_cap,
                            char *card_id, size_t card_cap);
 
+/* ===================== 补传结果三态 ===================== */
+/*
+ * 关键事实：设备侧的 `ok` 只代表**信封层**成功（验签通过 + 解密成功）。
+ * 服务端的业务错（4003 没听清 / 4290 并发被拒 / 4291 配额 / 5001 上游异常）
+ * 回的**也是加密信封** → 一律 `ok=true, biz=非0`。
+ *
+ * 所以**不能只看 ok**，必须再看业务码 —— 否则任何业务错都会被当成「成功」，
+ * 把用户的录音/图片删掉还不重试。
+ */
+
+/** 云端真答了：出队 + 删关联文件。 */
+#define OUTBOX_RESULT_DONE 0
+/** 云端明确拒收且重试无用（4003 没听清 / 4004 学段未设 / 4291 配额用完）：丢弃 + 删媒体。 */
+#define OUTBOX_RESULT_DROP 1
+/** 传输失败或云端暂时性故障（4290 并发被拒 / 5001 上游故障 / 未知码）：文件留着，等下一轮。 */
+#define OUTBOX_RESULT_RETRY 2
+
+/** 服务端业务码：ASR 认不出这段音频（内容问题，重试无用）。 */
+#define OUTBOX_BIZ_ASR_FAILED 4003
+/** 服务端业务码：学段未设置（设备端配置缺失，重试无用）。 */
+#define OUTBOX_BIZ_PROFILE 4004
+/** 服务端业务码：今日深度导学次数用完（等明天，重试无用）。 */
+#define OUTBOX_BIZ_QUOTA 4291
+
+/**
+ * 按服务端业务码决定这条结果怎么处置。
+ *
+ * - `0` → `OUTBOX_RESULT_DONE`；
+ * - `4003` / `4004` / `4291` → `OUTBOX_RESULT_DROP`（内容或配置问题，
+ *   重试无用，不占队列位置）；
+ * - 其它非 0 → `OUTBOX_RESULT_RETRY`（4290 并发被拒 / 5001 上游故障 / 未知码
+ *   —— **保文件**，交给重试上限与过期策略兜底）；
+ * - `-1` → `OUTBOX_RESULT_RETRY`（传输层失败，根本没有业务码）。
+ *
+ * **在线路径与补传路径必须用同一套判定** —— 否则同一份数据在两条路上命运不同。
+ */
+static inline int outbox_classify_result(int biz_code)
+{
+    switch (biz_code) {
+    case 0:
+        return OUTBOX_RESULT_DONE;
+    case OUTBOX_BIZ_ASR_FAILED:
+    case OUTBOX_BIZ_PROFILE:
+    case OUTBOX_BIZ_QUOTA:
+        return OUTBOX_RESULT_DROP;
+    default:
+        /* 4290 并发被拒 / 5001 上游故障 / 未知码 / -1 传输失败 → 可重试。 */
+        return OUTBOX_RESULT_RETRY;
+    }
+}
+
 #ifdef __cplusplus
 }
 #endif

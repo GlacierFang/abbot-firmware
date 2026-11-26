@@ -835,3 +835,4 @@ int outbox_read_file(const char *path, uint8_t **out_buf, uint32_t *out_len)
     *out_len = io2.out_len;
     return OUTBOX_OK;
 }
+

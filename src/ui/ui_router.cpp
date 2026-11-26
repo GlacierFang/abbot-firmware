@@ -1089,6 +1089,12 @@ void ui_router_handle_net_reply(int32_t biz_code, char *payload, uint32_t len)
             ui_show_friendly_error(ERR_CLOCK_NEED_SYNC);
             return;
         }
+        if (s_last_biz == 5001) {
+            /* 云端暂时性故障：net 层已把题目/录音存进待问收件箱（biz 可重试），
+             * 给专门提示（doc/03 ERR_SERVER_5001），别让用户以为白问了。 */
+            ui_show_friendly_error(ERR_SERVER_5001);
+            return;
+        }
         ui_toast("网络请求未成功");
         return;
     }

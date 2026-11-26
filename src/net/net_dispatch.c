@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "outbox.h"
 
 int net_dispatch(const net_request_t *req, char **out_resp_json)
 {
@@ -29,14 +30,16 @@ int net_dispatch(const net_request_t *req, char **out_resp_json)
         ok = net_study_solve(req->session_id, req->jpg, (size_t)req->jpg_len,
                              (const uint8_t *)req->pcm, (size_t)req->pcm_bytes,
                              req->hint_level, &biz, &resp);
-        if (ok) {
-            /* 传成功了，卡上那张图就没用了 —— 删掉，不留垃圾
+        if (ok && !(outbox_classify_result(biz) == OUTBOX_RESULT_RETRY)) {
+            /* 云端收下并处理完（biz=0），或明确拒收且重试无用
+             * （4003 没听清 / 4004 学段未设 / 4291 配额用完）
+             * —— 卡上那张图就没用了，删掉，不留垃圾
              * （doc/04 §3.5 媒体垃圾文件清理铁律）。 */
             net_media_cleanup(req->media_path);
         } else {
-            /* 断网 / 未配对 —— 别让用户的拍照白拍：入队，等联网后补传。
-             * 注意只有**传输失败**才入队；网关返回的业务错（比如 4004 学段未设置）
-             * 是 `ok=true, biz=4004`，那种重试也没用，不入队。 */
+            /* 断网 / 未配对（传输失败），或云端暂时性故障（5001 上游超时 /
+             * 4290 并发被拒）—— 别让用户的拍照白拍：入队，等联网后补传。
+             * 业务错里的 4003 / 4004 / 4291 走上面那条删除分支：重试也没用。 */
             net_outbox_enqueue_solve(req->session_id, req->media_path, req->hint_level);
         }
         break;
@@ -44,14 +47,12 @@ int net_dispatch(const net_request_t *req, char **out_resp_json)
         ok = net_study_voice(req->context_page, req->pack_id, req->card_id,
                              (const uint8_t *)req->pcm, (size_t)req->pcm_bytes,
                              &biz, &resp);
-        if (ok) {
-            /* 传成功了，卡上那段录音就没用了 —— 删掉，不留垃圾
-             * （doc/04 §3.5 媒体垃圾文件清理铁律）。 */
+        if (ok && !(outbox_classify_result(biz) == OUTBOX_RESULT_RETRY)) {
+            /* 同上：云端收下并处理完，或明确拒收且重试无用。 */
             net_media_cleanup(req->media_path);
         } else {
-            /* 断网 / 未配对 —— 别让用户说的话白说：入队，等联网后补传。
-             * 只有**传输失败**才入队；网关返回的业务错（比如 4003 没听清）
-             * 是 `ok=true, biz=4003`，那种重试也没用，不入队。 */
+            /* 断网 / 未配对，或云端暂时性故障 —— 别让用户说的话白说：
+             * 入队，等联网后补传。 */
             net_outbox_enqueue_voice(req->session_id, req->media_path,
                                      req->context_page, req->pack_id, req->card_id);
         }
