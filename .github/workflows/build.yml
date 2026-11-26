@@ -124,6 +124,11 @@ jobs:
               test/test_ui_weather.c src/ui/ui_weather.c src/net/net_req.c src/net/net_client.c \
               -o /tmp/test_ui_weather -lmbedtls -lmbedcrypto
           /tmp/test_ui_weather
+          # 开机画面位图（尺寸 / 字节序 / 内容非退化）—— 纯 C，主机侧可测
+          gcc -Wall -Wextra -Werror -I include -I src \
+              test/test_boot_image.c src/ui/boot_image.c \
+              -o /tmp/test_boot_image
+          /tmp/test_boot_image
           bash test/host_check_arduino.sh
           # C/C++ 静态自检（static 函数先用后声明 / designated initializer 乱序）
           # —— 这两类错在主机侧就能查出来，不必等 Actions 一轮只暴露一个错误

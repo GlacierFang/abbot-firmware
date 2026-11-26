@@ -19,6 +19,7 @@
 #include "hal_interfaces.h"
 #include "hal_shared.h"
 #include "ota_client.h"
+#include "ui_boot_screen.h"
 
 static const char *TAG = "abbot";
 
@@ -56,6 +57,9 @@ void setup()
         peripherals_ok = false;
     } else {
         Serial.printf("[%s] display ready\n", TAG);
+        /* 开机画面：背光还是 0 时先把图刷进屏，逐档点亮的过程正好把图显影出来。
+         * 图是编译进固件的 RGB565 静态数组，不依赖 TF 卡与网络（doc/02 §3.1）。 */
+        ui_boot_screen_show();
         /* 逐档点亮背光：真机首刷时能肉眼确认 5 档亮度梯度 */
         for (uint8_t lv = 1; lv <= 5; lv++) {
             hal_display_set_backlight(lv);
