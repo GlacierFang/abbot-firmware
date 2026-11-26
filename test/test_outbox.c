@@ -586,6 +586,56 @@ static void test_delete_and_read_media(void)
     CHECK(rc != OUTBOX_OK, "删掉后读不到");
 }
 
+/* ============================================================
+ * 语音上下文编解码（"PAGE|pack_id|card_id"）
+ * ============================================================ */
+
+static void test_voice_context(void)
+{
+    char ctx[64];
+    char page[16];
+    char pack[24];
+    char card[24];
+
+    /* 正常三元组 */
+    memset(ctx, 0, sizeof ctx);
+    CHECK(outbox_encode_context(ctx, sizeof ctx, "PAGE_CARD_STUDY", "m7_geo", "card_03") == OUTBOX_OK,
+          "编出上下文成功");
+    CHECK(strcmp(ctx, "PAGE_CARD_STUDY|m7_geo|card_03") == 0, "上下文格式是 PAGE|pack|card");
+
+    /* 解回来 */
+    memset(page, 0, sizeof page);
+    memset(pack, 0, sizeof pack);
+    memset(card, 0, sizeof card);
+    CHECK(outbox_decode_context(ctx, page, sizeof page, pack, sizeof pack, card, sizeof card) == OUTBOX_OK,
+          "解析上下文成功");
+    CHECK(strcmp(page, "PAGE_CARD_STUDY") == 0, "页面还原正确");
+    CHECK(strcmp(pack, "m7_geo") == 0, "学科包还原正确");
+    CHECK(strcmp(card, "card_03") == 0, "卡片还原正确");
+
+    /* 学科包 / 卡片可以为空（只有页面上下文的语音也是合法的） */
+    memset(ctx, 0, sizeof ctx);
+    CHECK(outbox_encode_context(ctx, sizeof ctx, "PAGE_HOME", NULL, NULL) == OUTBOX_OK, "空 pack/card 也能编");
+    CHECK(strcmp(ctx, "PAGE_HOME||") == 0, "空段编码正确");
+
+    /* 脏数据不能蒙混过关 */
+    CHECK(outbox_decode_context(NULL, page, sizeof page, pack, sizeof pack, card, sizeof card) != OUTBOX_OK,
+          "NULL 上下文被拒");
+    CHECK(outbox_decode_context("", page, sizeof page, pack, sizeof pack, card, sizeof card) != OUTBOX_OK,
+          "空上下文被拒");
+    CHECK(outbox_decode_context("PAGE", page, sizeof page, pack, sizeof pack, card, sizeof card) != OUTBOX_OK,
+          "少一段被拒");
+    CHECK(outbox_decode_context("A|B|C|D", page, sizeof page, pack, sizeof pack, card, sizeof card) != OUTBOX_OK,
+          "多一段被拒");
+
+    /* 装不下就报 NO_SPACE —— 绝不截断出半个 id */
+    memset(ctx, 0, sizeof ctx);
+    CHECK(outbox_encode_context(ctx, 8, "PAGE_HOME", "m7_geo", "card_03") != OUTBOX_OK, "缓冲不足不编");
+    CHECK(ctx[0] == '\0', "失败时输出清空");
+    CHECK(outbox_decode_context("PAGE_HOME|m7_geo|card_03", page, 4, pack, sizeof pack,
+                                card, sizeof card) != OUTBOX_OK, "目标缓冲不足不解析（不截断）");
+}
+
 int main(void)
 {
     printf("=== abbot 离线队列（outbox）测试 ===\n");
@@ -602,6 +652,7 @@ int main(void)
     test_load_missing_is_empty();
     test_load_corrupt_falls_back_to_bak();
     test_delete_and_read_media();
+    test_voice_context();
     printf("\n=== %d checks, %d failures ===\n", g_checks, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

@@ -27,7 +27,7 @@ int net_dispatch(const net_request_t *req, char **out_resp_json)
     switch (req->op) {
     case NET_OP_SOLVE:
         ok = net_study_solve(req->session_id, req->jpg, (size_t)req->jpg_len,
-                             (const uint8_t *)req->pcm, (size_t)req->pcm_samples,
+                             (const uint8_t *)req->pcm, (size_t)req->pcm_bytes,
                              req->hint_level, &biz, &resp);
         if (ok) {
             /* 传成功了，卡上那张图就没用了 —— 删掉，不留垃圾
@@ -42,8 +42,19 @@ int net_dispatch(const net_request_t *req, char **out_resp_json)
         break;
     case NET_OP_VOICE:
         ok = net_study_voice(req->context_page, req->pack_id, req->card_id,
-                             (const uint8_t *)req->pcm, (size_t)req->pcm_samples,
+                             (const uint8_t *)req->pcm, (size_t)req->pcm_bytes,
                              &biz, &resp);
+        if (ok) {
+            /* 传成功了，卡上那段录音就没用了 —— 删掉，不留垃圾
+             * （doc/04 §3.5 媒体垃圾文件清理铁律）。 */
+            net_media_cleanup(req->media_path);
+        } else {
+            /* 断网 / 未配对 —— 别让用户说的话白说：入队，等联网后补传。
+             * 只有**传输失败**才入队；网关返回的业务错（比如 4003 没听清）
+             * 是 `ok=true, biz=4003`，那种重试也没用，不入队。 */
+            net_outbox_enqueue_voice(req->session_id, req->media_path,
+                                     req->context_page, req->pack_id, req->card_id);
+        }
         break;
     case NET_OP_BOOTSTRAP:
         ok = net_sync_bootstrap_auto(&biz, &resp);

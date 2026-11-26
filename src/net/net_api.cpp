@@ -999,9 +999,99 @@ bool net_outbox_enqueue_solve(const char *session_id, const char *media_path,
     return true;
 }
 
+/**
+ * 把一条语音请求入队（断网 / 未配对 / 云端忙时用）。
+ *
+ * 与拍题同构：**PCM 已经在 TF 卡上了**（录音端落盘后把路径带进来），
+ * 本函数只负责把「这段音频待补传 + 当时的上下文」记进索引。
+ */
+bool net_outbox_enqueue_voice(const char *session_id, const char *pcm_path,
+                               const char *context_page, const char *pack_id,
+                               const char *card_id)
+{
+    if (pcm_path == NULL || pcm_path[0] == '\0') {
+        return false;
+    }
+    /* 没有关联文件的条目没有补传价值 —— 不入队。 */
+    uint32_t size = 0;
+    if (outbox_file_size(pcm_path, &size) != OUTBOX_OK || size == 0) {
+        return false;
+    }
+
+    /* 上下文三元组：装不下就不入队（半截 id 比丢一条更糟）。 */
+    char context[64];
+    if (outbox_encode_context(context, sizeof(context), context_page,
+                               pack_id, card_id) != OUTBOX_OK) {
+        return false;
+    }
+
+    time_t now = 0;
+    time(&now);
+
+    outbox_queue_t q;
+    if (outbox_load(&q) < 0) {
+        return false;
+    }
+
+    outbox_entry_t e;
+    memset(&e, 0, sizeof(e));
+    snprintf(e.task_id, sizeof(e.task_id), "%ld", (long)now);
+    e.type = OUTBOX_TYPE_VOICE;
+    e.status = OUTBOX_STATUS_PENDING;
+    e.retry_count = 0;
+    e.created_at = (uint32_t)now;
+    snprintf(e.pcm_path, sizeof(e.pcm_path), "%s", pcm_path);
+    snprintf(e.context, sizeof(e.context), "%s", context);
+    if (session_id != NULL) {
+        snprintf(e.session_id, sizeof(e.session_id), "%s", session_id);
+    }
+
+    int evicted = -1;
+    outbox_enqueue(&q, &e, &evicted);
+    if (evicted >= 0) {
+        /* 淘汰的那条的关联文件要删掉，别在卡上留垃圾。 */
+        outbox_delete_file(q.items[evicted].image_path);
+        outbox_delete_file(q.items[evicted].pcm_path);
+    }
+    if (outbox_store(&q) != OUTBOX_OK) {
+        return false;
+    }
+    Serial.printf("[%s] 离线入队（语音）：%s（队列 %d 条）\n", NET_TAG, pcm_path, q.count);
+    return true;
+}
+
 /** 把一条队列条目发给网关。成功返回 true。 */
 static bool net_outbox_send_entry(const outbox_entry_t *e, int *out_biz)
 {
+    if (e->type == OUTBOX_TYPE_VOICE) {
+        /* 语音条目：补传 PCM + 当时的上下文三元组（云端据此还原追问语境）。 */
+        uint8_t *pcm = NULL;
+        uint32_t pcm_len = 0;
+        if (outbox_read_file(e->pcm_path, &pcm, &pcm_len) != OUTBOX_OK || pcm_len == 0) {
+            /* 关联文件不见了 —— 这条没救，交给上层丢弃。 */
+            return false;
+        }
+        char page[16] = { 0 };
+        char pack[24] = { 0 };
+        char card[24] = { 0 };
+        if (outbox_decode_context(e->context, page, sizeof(page),
+                                   pack, sizeof(pack), card, sizeof(card)) != OUTBOX_OK) {
+            free(pcm);
+            return false;
+        }
+        char *resp = NULL;
+        int biz = -1;
+        bool ok = net_study_voice(page, pack, card, pcm, pcm_len, &biz, &resp);
+        if (resp != NULL) {
+            free(resp);
+        }
+        free(pcm);
+        if (out_biz != NULL) {
+            *out_biz = biz;
+        }
+        return ok;
+    }
+
     uint8_t *jpg = NULL;
     uint32_t jpg_len = 0;
     if (outbox_read_file(e->image_path, &jpg, &jpg_len) != OUTBOX_OK || jpg_len == 0) {
@@ -1035,6 +1125,14 @@ int net_outbox_flush(void)
     if (!net_is_paired()) {
         return 0;   /* 还没接入，补传不了 */
     }
+    /*
+     * 时钟不可信时**不补传**（doc/04 §1.3 的熔断：云端业务请求一律被闸门拦下）。
+     * 照发的话每次都会被判失败并消耗一次重试，5 次就把用户的待问条目清空了。
+     * 等校时成功后自然会发出去。
+     */
+    if (net_clock_is_unverified()) {
+        return 0;
+    }
     outbox_queue_t q;
     if (outbox_load(&q) <= 0) {
         return 0;
@@ -1067,7 +1165,7 @@ int net_outbox_flush(void)
      */
     for (int i = 0; i < q.count; i++) {
         outbox_entry_t *e = &q.items[i];
-        if (e->type != OUTBOX_TYPE_SOLVE) {
+        if (e->type != OUTBOX_TYPE_SOLVE && e->type != OUTBOX_TYPE_VOICE) {
             continue;   /* 其它类型暂不支持补传 */
         }
         int biz = -1;

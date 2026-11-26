@@ -40,6 +40,7 @@ typedef enum {
     CALL_PROFILE,
     CALL_REGISTER,
     CALL_ENQUEUE,
+    CALL_ENQUEUE_VOICE,
     CALL_CITY,
 } call_t;
 
@@ -51,6 +52,7 @@ static char g_last_pack[24];
 static char g_last_card[24];
 static char g_last_code[8];
 static char g_last_media[72];   /* 媒体路径（TF 卡路径上限 72） */
+static char g_last_context[64]; /* 语音上下文三元组（PAGE|pack|card） */
 static char g_last_stage[16];
 static char g_last_city[32];
 static int g_last_year = 0;
@@ -60,6 +62,7 @@ static size_t g_last_jpg_len = 0;
 static size_t g_last_pcm_len = 0;
 static int g_cleanup_count = 0;
 static bool g_solve_ok = true;   /* 桩的拍题结果：默认成功，测试里可改成失败 */
+static bool g_voice_ok = true;   /* 桩的语音结果：默认成功，测试里可改成失败 */
 
 /* 桩返回的应答明文（net_dispatch 会把所有权交给调用方） */
 static char *make_resp(void)
@@ -111,7 +114,7 @@ bool net_study_voice(const char *context_page, const char *pack_id, const char *
     if (out_resp_json != NULL) {
         *out_resp_json = make_resp();
     }
-    return true;
+    return g_voice_ok;
 }
 
 bool net_sync_bootstrap_auto(int *out_biz_code, char **out_resp_json)
@@ -148,6 +151,21 @@ bool net_outbox_enqueue_solve(const char *session_id, const char *media_path,
     (void)hint_level;
     g_last_call = CALL_ENQUEUE;
     snprintf(g_last_media, sizeof g_last_media, "%s", media_path ? media_path : "");
+    return true;
+}
+
+/* 离线队列：语音入队（补传链路的第二段） */
+bool net_outbox_enqueue_voice(const char *session_id, const char *pcm_path,
+                               const char *context_page, const char *pack_id,
+                               const char *card_id)
+{
+    (void)session_id;
+    g_last_call = CALL_ENQUEUE_VOICE;
+    snprintf(g_last_media, sizeof g_last_media, "%s", pcm_path ? pcm_path : "");
+    snprintf(g_last_context, sizeof g_last_context, "%s|%s|%s",
+             context_page ? context_page : "",
+             pack_id ? pack_id : "",
+             card_id ? card_id : "");
     return true;
 }
 
@@ -240,13 +258,32 @@ int main(void)
     snprintf(req.pack_id, sizeof req.pack_id, "m7_geo");
     snprintf(req.card_id, sizeof req.card_id, "card_03");
     req.pcm = (const int16_t *)"PCMDATA";
-    req.pcm_samples = 7;
+    req.pcm_bytes = 7;
     rc = net_dispatch(&req, &resp);
     CHECK(g_last_call == CALL_VOICE, "op=语音 路由到 study/voice");
     CHECK(strcmp(g_last_page, "READER") == 0, "context_page 原样传下去");
     CHECK(strcmp(g_last_pack, "m7_geo") == 0, "pack_id 原样传下去");
     CHECK(strcmp(g_last_card, "card_03") == 0, "card_id 原样传下去");
     CHECK(g_last_pcm_len == 7, "PCM 长度原样传下去");
+    free(resp);
+    resp = NULL;
+
+    /* 2b. 语音断网 -> 入队（别让用户说的话白说） */
+    reset();
+    memset(&req, 0, sizeof req);
+    req.op = NET_OP_VOICE;
+    snprintf(req.context_page, sizeof req.context_page, "PAGE_CARD_STUDY");
+    snprintf(req.pack_id, sizeof req.pack_id, "m7_geo");
+    snprintf(req.card_id, sizeof req.card_id, "card_03");
+    snprintf(req.media_path, sizeof req.media_path, "/outbox/task_1.pcm");
+    req.pcm = (const int16_t *)"PCMDATA";
+    req.pcm_bytes = 7;
+    g_voice_ok = false;
+    rc = net_dispatch(&req, &resp);
+    CHECK(g_last_call == CALL_ENQUEUE_VOICE, "语音失败时入队而不是丢掉");
+    CHECK(strcmp(g_last_media, "/outbox/task_1.pcm") == 0, "入队带的是 PCM 路径");
+    CHECK(strcmp(g_last_context, "PAGE_CARD_STUDY|m7_geo|card_03") == 0, "入队带的是上下文三元组");
+    g_voice_ok = true;
     free(resp);
     resp = NULL;
 

@@ -541,6 +541,93 @@ int outbox_make_media_path_by_id(char *out, size_t cap, const char *task_id,
 }
 
 /* ============================================================
+ * 语音上下文编解码（"PAGE|pack_id|card_id"）
+ * ============================================================ */
+
+/**
+ * 编出 context 字段（doc/04 §3.5 的 context）。
+ *
+ * 为什么必须有它：语音入队后，补传时必须把「当时问的是哪张卡片」原样
+ * 交回云端（doc/05 §5.1 的 voice 契约），否则回答会答非所问。
+ *
+ * 三段固定：PAGE|pack_id|card_id，段内容可为空（当时只有页面上下文也合法）。
+ * 成功返回 OUTBOX_OK；参数非法返回 OUTBOX_ERR_INVALID；
+ * 装不下返回 OUTBOX_ERR_NO_SPACE —— **不截断**（半截 id 比失败更糟）。
+ */
+int outbox_encode_context(char *out, size_t cap, const char *page,
+                           const char *pack_id, const char *card_id)
+{
+    if (out == NULL || cap == 0 || page == NULL) {
+        return OUTBOX_ERR_INVALID;
+    }
+    const char *pk = (pack_id != NULL) ? pack_id : "";
+    const char *cd = (card_id != NULL) ? card_id : "";
+    int n = snprintf(out, cap, "%s|%s|%s", page, pk, cd);
+    if (n < 0) {
+        return OUTBOX_ERR_INVALID;
+    }
+    if ((size_t)n >= cap) {
+        out[0] = '\0';
+        return OUTBOX_ERR_NO_SPACE;
+    }
+    return OUTBOX_OK;
+}
+
+/**
+ * 解析 context 字段。
+ *
+ * 必须恰好三段（两个 '|'）：多一个是脏数据，少一个是格式不对。
+ * 段内容可为空。
+ * 成功返回 OUTBOX_OK；格式不对返回 OUTBOX_ERR_INVALID；
+ * 目标缓冲装不下返回 OUTBOX_ERR_NO_SPACE（不截断）。
+ */
+int outbox_decode_context(const char *ctx,
+                           char *page, size_t page_cap,
+                           char *pack_id, size_t pack_cap,
+                           char *card_id, size_t card_cap)
+{
+    if (ctx == NULL || ctx[0] == '\0' ||
+        page == NULL || page_cap == 0 ||
+        pack_id == NULL || pack_cap == 0 ||
+        card_id == NULL || card_cap == 0) {
+        return OUTBOX_ERR_INVALID;
+    }
+
+    /* 恰好两个 '|'：多一个就是脏数据，少一个就是格式不对。 */
+    const char *bar1 = strchr(ctx, '|');
+    if (bar1 == NULL) {
+        return OUTBOX_ERR_INVALID;
+    }
+    const char *bar2 = strchr(bar1 + 1, '|');
+    if (bar2 == NULL) {
+        return OUTBOX_ERR_INVALID;
+    }
+    if (strchr(bar2 + 1, '|') != NULL) {
+        return OUTBOX_ERR_INVALID;
+    }
+
+    const char *seg[3];
+    size_t seg_len[3];
+    seg[0] = ctx;
+    seg_len[0] = (size_t)(bar1 - ctx);
+    seg[1] = bar1 + 1;
+    seg_len[1] = (size_t)(bar2 - bar1 - 1);
+    seg[2] = bar2 + 1;
+    seg_len[2] = strlen(seg[2]);
+
+    char *dst[3] = { page, pack_id, card_id };
+    size_t cap[3] = { page_cap, pack_cap, card_cap };
+    for (int i = 0; i < 3; i++) {
+        if (seg_len[i] + 1 > cap[i]) {
+            return OUTBOX_ERR_NO_SPACE;
+        }
+        memcpy(dst[i], seg[i], seg_len[i]);
+        dst[i][seg_len[i]] = '\0';
+    }
+    return OUTBOX_OK;
+}
+
+/* ============================================================
  * 传输层：走存储任务队列
  * ============================================================ */
 

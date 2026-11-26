@@ -58,7 +58,7 @@ typedef struct {
     uint8_t *jpg;        /* 图像缓冲：所有权随请求转移，用完由网络任务释放 */
     uint32_t jpg_len;
     const int16_t *pcm;  /* 16kHz PCM（可为空） */
-    uint32_t pcm_samples;
+    uint32_t pcm_bytes;  /* PCM **字节数**（16bit/Mono 裸 PCM = 采样点数 × 2） */
     char context_page[16]; /* NET_OP_VOICE：当前页面 */
     char pack_id[24];      /* NET_OP_VOICE / NET_OP_CARDS：学科包 id */
     char card_id[24];      /* NET_OP_VOICE */
@@ -77,6 +77,8 @@ typedef struct {
      * 相机任务拍完就把 JPG 落到卡上（doc/04 §3.5 命名法），把这个路径带过来：
      *   - 上传成功 -> 删掉它（doc/04 §3.5 媒体垃圾文件清理铁律）；
      *   - 上传失败 -> 把它记进离线队列，等联网后补传。
+     * 语音请求（NET_OP_VOICE）时这里是 **PCM 文件路径**（`.pcm`）——
+     * 语义相同：录音端先落盘，传输失败就入队等补传。
      */
     char media_path[72];
 } net_request_t;
@@ -309,6 +311,24 @@ bool net_ota_check(nr_ota_t *out);
  */
 bool net_outbox_enqueue_solve(const char *session_id, const char *media_path,
                                uint8_t hint_level);
+
+/**
+ * 把一条语音请求入队（断网 / 未配对 / 云端忙时用）。
+ *
+ * **PCM 已经在 TF 卡上了** —— 录音端落盘后把路径带进来（与拍题同构）。
+ * 本函数把「这段音频待补传 + 当时的上下文」记进索引。
+ *
+ * `context` 记的是 "PAGE|pack_id|card_id"（doc/04 §3.5 的 context 字段）——
+ * 补传时云端要靠它还原「当时在哪个页面 / 哪张卡片」的追问语境。
+ *
+ * 队列满了（>10 条）时淘汰**最旧**的一条，并把它的关联文件删掉
+ * （doc/04 §3.5 的媒体垃圾文件清理铁律：索引里没有的条目，文件也不能留）。
+ *
+ * 返回 true = 已入队。
+ */
+bool net_outbox_enqueue_voice(const char *session_id, const char *pcm_path,
+                               const char *context_page, const char *pack_id,
+                               const char *card_id);
 
 /**
  * 补传：把队列里的任务发给网关。

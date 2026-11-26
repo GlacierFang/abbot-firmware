@@ -197,6 +197,32 @@ int outbox_file_size(const char *path, uint32_t *out_size);
  */
 int outbox_read_file(const char *path, uint8_t **out_buf, uint32_t *out_len);
 
+/* ===================== 语音上下文编解码 ===================== */
+/*
+ * 语音请求离线入队时，除了 PCM 文件还得记住「当时在哪个页面 / 哪个学科包 /
+ * 哪张卡片」—— 否则联网补传时云端拿不到追问语境，回答会跑偏。
+ * 队列条目的 context 字段格式固定为 "PAGE|pack_id|card_id"（三段，段可为空）。
+ */
+
+/**
+ * 编出 context 字段。
+ * 成功返回 OUTBOX_OK；参数非法返回 OUTBOX_ERR_INVALID；
+ * 装不下返回 OUTBOX_ERR_NO_SPACE —— **绝不截断出半个 id**
+ * （半截的 pack_id 会让云端拿到错的卡片，比入不了队更糟）。
+ */
+int outbox_encode_context(char *out, size_t cap, const char *page,
+                           const char *pack_id, const char *card_id);
+
+/**
+ * 解析 context 字段，还原「页面 / 学科包 / 卡片」。
+ * 成功返回 OUTBOX_OK；ctx 为空 / 不是三段格式返回 OUTBOX_ERR_INVALID；
+ * 目标缓冲装不下返回 OUTBOX_ERR_NO_SPACE（不截断）。
+ */
+int outbox_decode_context(const char *ctx,
+                           char *page, size_t page_cap,
+                           char *pack_id, size_t pack_cap,
+                           char *card_id, size_t card_cap);
+
 #ifdef __cplusplus
 }
 #endif
