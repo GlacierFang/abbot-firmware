@@ -530,6 +530,95 @@ static int test_xcheck_pack(const char *dir)
     return 1;
 }
 
+/* 知识点整理形态（2026-11-26 拍板，参照山河图记的知识卡片）：
+ * 正面 = 概念，背面 = 定义，hint = AI 辅助说明（通俗比喻），chapter = 章节归属键。 */
+static void test_parse_item_knowledge(void)
+{
+    card_item_t item;
+    const char *json =
+        "{\"id\":\"ch1-c1\",\"question\":\"天体系统\","
+        "\"answer\":\"宇宙中不同级别的天体相互吸引、相互绕转形成的系统。\","
+        "\"hint\":\"想象宇宙是一所超大联校。\","
+        "\"chapter\":\"ch1\"}";
+    CHECK(cards_parse_item(json, strlen(json), &item) == 0, "知识点卡片解析成功");
+    CHECK(strcmp(item.id, "ch1-c1") == 0, "知识点 id 正确");
+    CHECK(strcmp(item.question, "天体系统") == 0, "question（知识点标题）正确");
+    CHECK(strcmp(item.answer, "宇宙中不同级别的天体相互吸引、相互绕转形成的系统。") == 0,
+          "answer（知识点解释）正确");
+    CHECK(strcmp(item.hint, "想象宇宙是一所超大联校。") == 0, "hint（AI 辅助说明）正确");
+    CHECK(strcmp(item.chapter, "ch1") == 0, "chapter（章节归属键）正确");
+
+    /* 旧包（只有 question/answer）照样能解：两个新字段留空 */
+    const char *old_json = "{\"id\":\"c0007\",\"question\":\"1+1=?\",\"answer\":\"2\"}";
+    CHECK(cards_parse_item(old_json, strlen(old_json), &item) == 0, "旧包卡片解析成功");
+    CHECK(item.hint[0] == '\0', "旧包没有 hint");
+    CHECK(item.chapter[0] == '\0', "旧包没有 chapter");
+}
+
+/* 末尾的 UTF-8 序列是否完整：往后数续字节（最多 3 个），
+ * 前面那个首字节声明的长度必须刚好对上。
+ * 注意：完整汉字的**末字节本身就是续字节**（0x80..0xBF），
+ * 所以不能简单断言「末字节不是续字节」。 */
+static int utf8_tail_ok(const char *s, size_t n)
+{
+    size_t i = n;
+    size_t cont = 0;
+    unsigned char lead;
+    size_t expect;
+
+    while (i > 0 && ((unsigned char)s[i - 1] & 0xC0u) == 0x80u) {
+        i--;
+        cont++;
+        if (cont > 3) {
+            return 0;
+        }
+    }
+    if (i == 0) {
+        return (cont == 0);
+    }
+    lead = (unsigned char)s[i - 1];
+    if ((lead & 0x80u) == 0x00u) {
+        expect = 1;
+    } else if ((lead & 0xE0u) == 0xC0u) {
+        expect = 2;
+    } else if ((lead & 0xF0u) == 0xE0u) {
+        expect = 3;
+    } else if ((lead & 0xF8u) == 0xF0u) {
+        expect = 4;
+    } else {
+        return 0;
+    }
+    return (expect == cont + 1);
+}
+
+/* 超长字段应**截断**而不是让整个字段静默变空，且截断要落在 UTF-8 边界上。 */
+static void test_parse_item_truncate(void)
+{
+    card_item_t item;
+    char blob[1024];
+    char json[1200];
+    int i;
+    int pos = 0;
+    size_t alen;
+
+    for (i = 0; i < 200; i++) {
+        memcpy(blob + pos, "\xe6\xb1\x89", 3);   /* 「汉」 */
+        pos += 3;
+    }
+    blob[pos] = '\0';
+    snprintf(json, sizeof(json),
+             "{\"id\":\"c1\",\"question\":\"x\",\"answer\":\"%s\"}", blob);
+
+    CHECK(cards_parse_item(json, strlen(json), &item) == 0, "超长字段不导致解析失败");
+    alen = strlen(item.answer);
+    CHECK(alen > 0, "超长字段仍有内容（截断而非清空）");
+    CHECK(alen < CARD_ANSWER_MAX, "截断后长度在上限内（实际 %u）", (unsigned)alen);
+    if (alen > 0) {
+        CHECK(utf8_tail_ok(item.answer, alen),
+              "截断落在 UTF-8 字符边界上（末尾字节序列完整）");
+    }
+}
+
 int main(int argc, char **argv)
 {
     printf("=== abbot 学科卡片包测试（cards）===\n");
@@ -537,6 +626,8 @@ int main(int argc, char **argv)
     test_roundtrip_offsets();
     test_parse_index();
     test_parse_item();
+    test_parse_item_knowledge();
+    test_parse_item_truncate();
     test_item_length();
     test_cards_load_e2e();
     if (argc > 1) {

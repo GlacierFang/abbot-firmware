@@ -183,6 +183,50 @@ int cards_decrypt_range(const uint8_t key[16], const uint8_t iv[16],
  * 在 [s,e) 里找 `"key"` 对应的**字符串值**，解转义后拷进定长缓冲。
  * 返回写入长度（不含结尾 NUL）；找不到返回 -1。
  */
+/**
+ * 把字符串末尾**不完整**的 UTF-8 序列切掉（最多 3 字节）。
+ *
+ * 截断必须落在字符边界上 —— 半个汉字上屏是乱码，不是「略长」。
+ * ASCII（单字节）永远不动。
+ */
+static void cards_utf8_trim(char *s, size_t n)
+{
+    size_t i = n;
+    /* 先剥掉末尾连续的 continuation 字节（0x80..0xBF） */
+    while (i > 0 && ((unsigned char)s[i - 1] & 0xC0u) == 0x80u) {
+        i--;
+    }
+    if (i == 0) {
+        s[0] = '\0';
+        return;
+    }
+    unsigned char lead = (unsigned char)s[i - 1];
+    size_t need;
+    if ((lead & 0x80u) == 0x00u) {
+        need = 1;
+    } else if ((lead & 0xE0u) == 0xC0u) {
+        need = 2;
+    } else if ((lead & 0xF0u) == 0xE0u) {
+        need = 3;
+    } else if ((lead & 0xF8u) == 0xF0u) {
+        need = 4;
+    } else {
+        need = 1;   /* 非法首字节，当单字节处理 */
+    }
+    if ((i - 1) + need > n) {
+        i = i - 1;  /* 序列不完整 → 整个去掉 */
+    }
+    s[i] = '\0';
+}
+
+/** 缓冲区写满时的收尾：截断到 UTF-8 边界并返回写入长度（不是错误）。 */
+static int cards_truncate_done(char *dst, size_t n)
+{
+    dst[n] = '\0';
+    cards_utf8_trim(dst, n);
+    return (int)strlen(dst);
+}
+
 static int cards_json_str(const char *s, const char *e, const char *key,
                           char *dst, size_t cap)
 {
@@ -258,20 +302,20 @@ static int cards_json_str(const char *s, const char *e, const char *key,
                     /* UTF-8 编码（3 字节的 BMP 码位） */
                     if (code >= 0x0800u) {
                         if (n + 3 >= cap) {
-                            return -1;
+                            return cards_truncate_done(dst, n);
                         }
                         dst[n++] = (char)(0xE0u | (code >> 12));
                         dst[n++] = (char)(0x80u | ((code >> 6) & 0x3Fu));
                         dst[n++] = (char)(0x80u | (code & 0x3Fu));
                     } else if (code >= 0x080u) {
                         if (n + 2 >= cap) {
-                            return -1;
+                            return cards_truncate_done(dst, n);
                         }
                         dst[n++] = (char)(0xC0u | (code >> 6));
                         dst[n++] = (char)(0x80u | (code & 0x3Fu));
                     } else {
                         if (n + 1 >= cap) {
-                            return -1;
+                            return cards_truncate_done(dst, n);
                         }
                         dst[n++] = (char)code;
                     }
@@ -282,8 +326,13 @@ static int cards_json_str(const char *s, const char *e, const char *key,
                 }
             }
             if (n + 1 >= cap) {
-                return -1;   /* 超长就截断在这里算失败 —— 宁可整张卡不显示，
-                               也不要显示一半的内容让人误读 */
+                /* 超长 → **截断**（切在 UTF-8 边界上），不是整张卡失败。
+                 *
+                 * 这里改过一次策略：知识点解释本来就长（山河图记的 definition
+                 * 常 80+ 字），原先「超长就报错」会让整个字段静默变空 ——
+                 * 屏幕上是一张只有标题的空白卡，比截断更糟。
+                 * 截断意味着内容不全，解不全会由 doc/05 的字段上限写清楚。 */
+                return cards_truncate_done(dst, n);
             }
             dst[n++] = c;
             q++;
@@ -305,9 +354,13 @@ int cards_parse_item(const char *json, size_t len, card_item_t *out)
     (void)cards_json_str(json, end, "id", out->id, sizeof(out->id));
     (void)cards_json_str(json, end, "question", out->question, sizeof(out->question));
     (void)cards_json_str(json, end, "answer", out->answer, sizeof(out->answer));
+    /* 知识点整理形态的两个可选字段：AI 辅助说明 + 章节归属键。
+     * 缺省就是空串 —— 旧包（只有 question/answer）照样能解。 */
+    (void)cards_json_str(json, end, "hint", out->hint, sizeof(out->hint));
+    (void)cards_json_str(json, end, "chapter", out->chapter, sizeof(out->chapter));
 
     if (out->question[0] == '\0') {
-        return CARDS_ERR_CORRUPT;   /* 没有题干的卡没法学 */
+        return CARDS_ERR_CORRUPT;   /* 没有知识点标题的卡没法学 */
     }
     return 0;
 }

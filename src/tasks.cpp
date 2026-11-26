@@ -425,7 +425,16 @@ static void task_net_worker(void *arg)
                  * 学科卡片包：解密 + 解析在**网络任务**里做（设备密钥只在 NVS，
                  * UI 层不碰密钥）。解完经 kind=6 投回 Core 1 渲染。
                  */
-                card_pack_t *pack = (card_pack_t *)malloc(sizeof(card_pack_t));
+                /* 卡片集约 148KB（128 张 × 1192 字节）—— **优先放 PSRAM**，
+                 * 内部 RAM 只做回落（板子是 8MB OPI PSRAM，见 platformio.ini
+                 * 的 board_build.arduino.memory_type = qio_opi）。
+                 * 注意 heap_caps_malloc 分配的块用 free() 释放是安全的
+                 * （IDF 的 free 认得 heap_caps 的块头）。 */
+                card_pack_t *pack = (card_pack_t *)heap_caps_malloc(
+                    sizeof(card_pack_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+                if (pack == NULL) {
+                    pack = (card_pack_t *)malloc(sizeof(card_pack_t));
+                }
                 int rc = (pack != NULL) ? net_cards_load(req.pack_id, pack) : CARDS_ERR_IO;
                 ui_command_t ccmd = {};
                 ccmd.kind = 6;              /* 卡片数据 */

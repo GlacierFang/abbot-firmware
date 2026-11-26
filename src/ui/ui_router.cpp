@@ -27,6 +27,7 @@
 #include "voice_capture.h"
 
 #include "hal_interfaces.h"   /* 背光、音频（Arduino.h 也从这里进来） */
+#include "esp_heap_caps.h"    /* 卡片集在 PSRAM（见 tasks.cpp 的分配点） */
 
 static ui_page_t s_current = PAGE_OOBE;
 static ui_book_page_t s_current_book = PAGE_BOOKSHELF;
@@ -1203,7 +1204,9 @@ void ui_router_handle_cards(card_pack_t *pack, int rc)
 {
     /* 旧的卡片集先释放（所有权一直在 UI 层） */
     if (s_cards != NULL) {
-        free(s_cards);
+        /* 卡片集是 PSRAM 块（tasks.cpp 里 heap_caps_malloc 分配的）——
+         * 必须用 heap_caps_free 释放，标准 free() 不认 PSRAM 的块头。 */
+        heap_caps_free(s_cards);
         s_cards = NULL;
     }
     if (pack == NULL) {
@@ -1211,7 +1214,7 @@ void ui_router_handle_cards(card_pack_t *pack, int rc)
         return;
     }
     if (rc < 0 || pack->count <= 0) {
-        free(pack);
+        heap_caps_free(pack);
         /* 文案温和，且**不出现加密、密钥这类技术词**（doc/03 §四 铁律） */
         if (rc == CARDS_ERR_KEY) {
             ui_toast("还没接入学习助手，先连上网再试");
