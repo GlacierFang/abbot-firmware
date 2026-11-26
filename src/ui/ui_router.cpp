@@ -11,6 +11,7 @@
  */
 #include "ui_router.h"
 
+#include "net_result.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1157,7 +1158,23 @@ void ui_router_handle_net_reply(int32_t biz_code, char *payload, uint32_t len)
             ui_toast("目前无网络，请检查连接后重试");
             return;
         }
-        ui_toast("网络请求未成功");
+        /*
+         * 其余按**设备端三态判定**（doc/05 §6，net_result.h）：
+         *   DROP  = 云端明确拒收，重试没用（4003 没听清 / 4291 配额用完）
+         *   RETRY = 暂时性故障，可以让用户再试一次
+         * 这套判定原先住在离线队列模块里；离线补传删掉后它仍然有用 ——
+         * 决定这次失败到底该不该让用户重试。各码的友好文案走 ui_error 表。 */
+        if (net_classify_result(s_last_biz) == NET_RESULT_DROP) {
+            if (s_last_biz == NET_BIZ_ASR_FAILED) {
+                ui_show_friendly_error(ERR_ASR_4003);
+            } else if (s_last_biz == NET_BIZ_QUOTA) {
+                ui_show_friendly_error(ERR_QUOTA_4291);
+            } else {
+                ui_toast("这次没能问成，请稍后再试");
+            }
+            return;
+        }
+        ui_toast("网络请求未成功，再试一次");
         return;
     }
 

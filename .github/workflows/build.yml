@@ -90,11 +90,6 @@ jobs:
               test/test_ui_book_guard.c src/ui/ui_book_guard.c \
               -o /tmp/test_ui_book_guard
           /tmp/test_ui_book_guard
-          # 离线队列（outbox）——纯 C，自带假存储任务
-          gcc -Wall -Wextra -Werror -I test/host_stubs -I include -I src \
-              test/test_outbox.c src/net/outbox.c \
-              -o /tmp/test_outbox
-          /tmp/test_outbox
           # 语音录音生产者（voice_capture）——纯逻辑部分（字节数/时长下限/音量分档）
           gcc -Wall -Wextra -Werror -I include -I src \
               test/test_voice_capture.c \
