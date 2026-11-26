@@ -2,7 +2,7 @@
 total 46248
 drwxr-xr-x 12 runner runner     4096 Nov 26 02:47 .
 drwxr-xr-x  3 runner runner     4096 Nov 26 02:46 ..
--rw-r--r--  1 runner runner  2078134 Nov 26 02:47 .sconsign311.dblite
+-rw-r--r--  1 runner runner  2078032 Nov 26 02:47 .sconsign311.dblite
 drwxr-xr-x  3 runner runner     4096 Nov 26 02:47 FrameworkArduino
 -rw-r--r--  1 runner runner    15104 Nov 26 02:46 bootloader.bin
 -rw-r--r--  1 runner runner  1336144 Nov 26 02:47 firmware.bin
