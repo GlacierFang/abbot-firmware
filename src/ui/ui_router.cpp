@@ -1,7 +1,7 @@
 /*
  * ui_router.cpp —— 页面路由 + 浮层优先级 + 六手势宪法落地
  *
- * 契约来源: abbot/doc/03 §三 浮层优先级 / §3.2 六手势宪法 / §五 13 页状态。
+ * 契约来源: abbot/doc/03 §三 浮层优先级 / §3.2 六手势宪法 / §五 14 页状态。
  *
  * 铁律:
  *   - 长按 600ms 的判定只由 HAL 做, 本文件只消费 HAL 交来的 GESTURE_LONG。
@@ -19,6 +19,7 @@
 #include "net_api.h"
 #include "net_req.h"
 #include "ui_data.h"
+#include "ui_error.h"
 #include "ui_pages.h"
 #include "ui_ota_page.h"
 #include "ui_weather.h"
@@ -351,6 +352,10 @@ void ui_router_go(ui_page_t page)
         /* 候选城市列表：光标复位（从第一项开始） */
         ui_pages_city_enter();
         break;
+    case PAGE_MANUAL_CLOCK:
+        /* 手动校时：清空两组输入，光标复位 */
+        ui_pages_manual_clock_enter();
+        break;
     default:
         break;
     }
@@ -460,12 +465,27 @@ static void ui_page_action(ui_page_t page)
         case 6: ui_toast("用左右键调整专注时长"); break;
         /* 「所在城市」：进候选城市列表（doc/05 §5.2） */
         case 7: ui_router_go(PAGE_CITY); break;
+        /* 「手动校时」：离线手动校时（doc/04 §1.3 时钟熔断兜底） */
+        case 8: ui_router_go(PAGE_MANUAL_CLOCK); break;
         default: ui_toast("这个设置还在准备中"); break;
         }
         break;
     case PAGE_POMODORO:
         /* 短按 = 暂停/继续（已完成后再按 = 重新开始） */
         ui_pages_pomodoro_toggle();
+        break;
+    case PAGE_MANUAL_CLOCK:
+        /* 短按 = 输入当前键；「确」触发提交（时间写入走 net 层 API） */
+        {
+            mc_result_t r = ui_pages_manual_clock_action();
+            if (r == MC_RESULT_OK) {
+                /* 先切页再弹提示：切页会清掉低优先级浮层（Toast），顺序反了就看不到 */
+                ui_router_go(PAGE_SETTINGS);
+                ui_toast("时间已更新");
+            } else if (r == MC_RESULT_BAD) {
+                ui_toast("时间格式不对，请重新输入");
+            }
+        }
         break;
     case PAGE_CITY:
         /* 短按 = 确认选中的城市：落盘 TF 卡 + 写进 net 层缓存（随心跳上报） */
@@ -617,6 +637,11 @@ static void ui_page_nav(ui_page_t page, int delta)
         ui_pages_city_move(delta);
         return;
     }
+    if (page == PAGE_MANUAL_CLOCK) {
+        /* 手动校时：上下在「日期」「时间」两组数字之间切换 */
+        ui_pages_manual_clock_move(0, delta);
+        return;
+    }
     ui_pages_cursor_move(page, delta);
 }
 
@@ -629,6 +654,11 @@ static void ui_page_side(ui_page_t page, int delta)
     if (page == PAGE_KEYBOARD) {
         /* 键盘：左右换列 */
         ui_pages_keyboard_move(delta, 0, (uint32_t)millis());
+        return;
+    }
+    if (page == PAGE_MANUAL_CLOCK) {
+        /* 手动校时：左右移动数字键盘光标 */
+        ui_pages_manual_clock_move(delta, 0);
         return;
     }
     if (page == PAGE_SETTINGS) {
@@ -843,6 +873,9 @@ void ui_router_handle_gesture(ui_gesture_t gesture)
             /* 键盘页: 长按 = 退出回 Wi-Fi 列表（不打断正在进行的连接） */
             ui_pages_keyboard_leave();
             ui_router_go(PAGE_WIFI_SCAN);
+        } else if (s_current == PAGE_MANUAL_CLOCK) {
+            /* 手动校时页: 长按 = 退出回设置页 */
+            ui_router_go(PAGE_SETTINGS);
         } else if (s_current != PAGE_HOME && s_current != PAGE_OOBE) {
             ui_router_go(PAGE_HOME);
         }
@@ -994,6 +1027,12 @@ void ui_router_handle_net_reply(int32_t biz_code, char *payload, uint32_t len)
         return;
     }
     if (s_last_biz != 0) {
+        /* 时钟熔断（doc/04 §1.3）：请求被 net 层拦下 → 给专门的提示，
+         * 而不是笼统的「网络请求未成功」 */
+        if (net_clock_is_unverified()) {
+            ui_show_friendly_error(ERR_CLOCK_NEED_SYNC);
+            return;
+        }
         ui_toast("网络请求未成功");
         return;
     }

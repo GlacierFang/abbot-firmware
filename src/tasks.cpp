@@ -384,6 +384,8 @@ static void task_net_worker(void *arg)
     (void)arg;
     QueueHandle_t q = hal_net_request_queue();
 
+    /* 先判定时钟可信度（doc/04 §1.3 熔断），再联网校时。 */
+    net_clock_boot_init();
     /* 上电先联网：Wi-Fi 连接 + NTP 校时（doc/04 §1）。 */
     net_wifi_init_auto_connect();
     net_sync_ntp_time();
@@ -396,6 +398,7 @@ static void task_net_worker(void *arg)
      */
     bool paired = net_is_paired();
     uint32_t next_register_ms = 0;
+    uint32_t next_clock_retry_ms = millis() + 60000;
 
     ui_command_t st = {};
     st.kind = 5;
@@ -405,6 +408,16 @@ static void task_net_worker(void *arg)
     for (;;) {
         /* 显式清零：xQueueReceive 只有在返回 pdTRUE 时才写 req，
          * 留着未初始化的内容会让 -Wmaybe-uninitialized 在 -O 下报错。 */
+        /* 时钟熔断态：队列空闲时重试 NTP 校时（doc/04 §1.3 熔断解除条件）——
+         * 只在无待处理请求时做，避免拖慢正在跑的业务请求。 */
+        if (net_clock_is_unverified() && q != NULL && uxQueueMessagesWaiting(q) == 0 &&
+            (int32_t)(millis() - next_clock_retry_ms) >= 0) {
+            next_clock_retry_ms = millis() + 60000;
+            net_clock_retry_sync(5000);
+        }
+        /* 整点低磨损检查点（doc/04 §1.3）—— 到点才写一次 NVS。 */
+        net_clock_checkpoint_if_due();
+
         net_request_t req = {};
         bool got = (q != NULL) && (xQueueReceive(q, &req, pdMS_TO_TICKS(100)) == pdTRUE);
 

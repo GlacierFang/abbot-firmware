@@ -21,6 +21,12 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <Preferences.h>
+
+#include <stdlib.h>
+
+#include "clock_guard.h"
+extern "C" void setTime(unsigned long sec, unsigned long usec, unsigned long sync_delay);
+
 #include <esp_heap_caps.h>
 #include <time.h>
 
@@ -54,6 +60,11 @@ extern "C" void configTime(long gmtOffset_sec, int daylightOffset_sec,
 
 #define NVS_NS_AUTH   "auth_cfg"   /* 设备密钥 + 网关地址（doc/04 §1） */
 #define NVS_NS_WIFI   "wifi_cfg"   /* 已保存热点 */
+
+/* 时钟基线与上次校时（doc/04 §1.3）。 */
+#define NVS_NS_CLOCK       "sys_clock"
+#define NVS_KEY_CLOCK_BASE "clock_base" /* 整点检查点：最近一次可信时钟基线 */
+#define NVS_KEY_LAST_NTP   "last_ntp"   /* 最近一次成功校时（UTC Unix 秒） */
 #define NVS_KEY_SECRET   "device_secret"
 #define NVS_KEY_HOST     "gateway_host"
 #define NVS_KEY_MOUNT    "gateway_mount"
@@ -230,6 +241,98 @@ static void nvs_set_str(const char *ns, const char *key, const char *value)
     prefs.putString(key, value);
     prefs.end();
 }
+static uint64_t nvs_get_u64(const char *ns, const char *key, uint64_t fallback)
+{
+    char buf[32];
+    nvs_get_str(ns, key, buf, sizeof buf, "");
+    if (buf[0] == '\0') {
+        return fallback;
+    }
+    return (uint64_t)strtoull(buf, NULL, 10);
+}
+
+static void nvs_set_u64(const char *ns, const char *key, uint64_t value)
+{
+    char buf[32];
+    snprintf(buf, sizeof buf, "%llu", (unsigned long long)value);
+    nvs_set_str(ns, key, buf);
+}
+
+/* ===================== 时钟熔断与低磨损检查点（doc/04 §1.3） ===================== */
+
+bool net_clock_is_unverified(void)
+{
+    return clock_guard_is_unverified();
+}
+
+bool net_clock_boot_init(void)
+{
+    uint64_t last_ntp = nvs_get_u64(NVS_NS_CLOCK, NVS_KEY_LAST_NTP, 0);
+
+    time_t now = 0;
+    time(&now);
+    clock_guard_boot((uint64_t)now, last_ntp, CLOCK_GUARD_UNVERIFIED_DAYS);
+
+    if (clock_guard_is_unverified()) {
+        /* 熔断：离线功能照常，只暂缓加密端云业务请求。
+         * 注意 —— 这里不从 NVS 恢复 RTC：恢复一个陈旧基线会造出
+         * 「看起来正常但偏移几小时」的时钟，那正是 4001 验签死锁的成因。 */
+        Serial.printf("[%s] clock unverified (last_ntp=%llu)\n", NET_TAG,
+                      (unsigned long long)last_ntp);
+    }
+    return !clock_guard_is_unverified();
+}
+
+void net_clock_note_verified(void)
+{
+    time_t now = 0;
+    time(&now);
+    uint64_t e = (uint64_t)now;
+    clock_guard_mark_verified(e);
+    nvs_set_u64(NVS_NS_CLOCK, NVS_KEY_LAST_NTP, e);
+    nvs_set_u64(NVS_NS_CLOCK, NVS_KEY_CLOCK_BASE, e);
+}
+
+bool net_clock_checkpoint_if_due(void)
+{
+    time_t now = 0;
+    time(&now);
+    uint64_t e = (uint64_t)now;
+    if (e < CLOCK_GUARD_MIN_VALID_EPOCH) {
+        return false; /* 时钟不可信时不写基线，避免把坏值写进 NVS */
+    }
+    if (!clock_guard_checkpoint_due(e)) {
+        return false;
+    }
+    clock_guard_mark_checkpoint(e);
+    nvs_set_u64(NVS_NS_CLOCK, NVS_KEY_CLOCK_BASE, e);
+    return true;
+}
+
+bool net_clock_set_manual(int year, int month, int day, int hour, int minute)
+{
+    uint64_t epoch = clock_guard_epoch_from_local(year, month, day, hour, minute, 8 * 3600);
+    if (epoch == 0) {
+        return false;
+    }
+    /* configTime 负责把时区偏移设成 UTC+8；setTime 写的是 UTC 时刻。 */
+    configTime(8 * 3600, 0, "ntp.aliyun.com", "cn.pool.ntp.org");
+    setTime((unsigned long)epoch, 0, 0);
+    net_clock_note_verified();
+    Serial.printf("[%s] manual clock set %04d-%02d-%02d %02d:%02d\n", NET_TAG,
+                  year, month, day, hour, minute);
+    return true;
+}
+
+bool net_clock_gate_user_request(const char *tag)
+{
+    if (!net_clock_is_unverified()) {
+        return true;
+    }
+    Serial.printf("[%s] clock unverified, blocked %s\n", NET_TAG, tag ? tag : "-");
+    return false;
+}
+
 
 static bool net_load_secret(uint8_t secret[NC_SECRET_LEN])
 {
@@ -525,22 +628,33 @@ int8_t net_wifi_get_rssi()
 
 /* ===================== NTP 与配对 ===================== */
 
-bool net_sync_ntp_time()
+static bool net_sync_ntp_time_ms(uint32_t timeout_ms)
 {
     /* doc/04 §1：连上 Wi-Fi 后自动向国内 NTP 校时（UTC+8） */
     configTime(8 * 3600, 0, "ntp.aliyun.com", "cn.pool.ntp.org");
 
     time_t now = 0;
     uint32_t start = millis();
-    while ((millis() - start) < 15000) {
+    while ((millis() - start) < timeout_ms) {
         time(&now);
         if (now > 1700000000) {   /* 2023-11-14 之后才算校时成功 */
+            net_clock_note_verified();
             return true;
         }
         delay(500);
     }
     Serial.printf("[%s] NTP 校时失败\n", NET_TAG);
     return false;
+}
+
+bool net_sync_ntp_time()
+{
+    return net_sync_ntp_time_ms(15000);
+}
+
+bool net_clock_retry_sync(uint32_t timeout_ms)
+{
+    return net_sync_ntp_time_ms(timeout_ms);
 }
 
 /**
@@ -1438,6 +1552,9 @@ bool net_ota_check(nr_ota_t *out)
     if (out == NULL) {
         return false;
     }
+    if (!net_clock_gate_user_request("ota_check")) {
+        return false;
+    }
     memset(out, 0, sizeof(*out));
 
     uint8_t secret[NC_SECRET_LEN];
@@ -1568,6 +1685,9 @@ bool net_study_solve(const char *session_id, const uint8_t *jpg_data, size_t jpg
                      const uint8_t *pcm_data, size_t pcm_len, uint8_t hint_level,
                      int *out_biz_code, char **out_resp_json)
 {
+    if (!net_clock_gate_user_request("solve")) {
+        return false;
+    }
     NetProfileContext ctx;
     if (!net_profile_load(&ctx)) {
         /* 学段没设置 —— 网关会回 4004，但设备端先把字段按空值送出去，
@@ -1604,6 +1724,9 @@ bool net_study_voice(const char *context_page, const char *pack_id, const char *
                      const uint8_t *pcm_data, size_t pcm_len,
                      int *out_biz_code, char **out_resp_json)
 {
+    if (!net_clock_gate_user_request("voice")) {
+        return false;
+    }
     NetProfileContext ctx;
     if (!net_profile_load(&ctx)) {
         memset(&ctx, 0, sizeof ctx);

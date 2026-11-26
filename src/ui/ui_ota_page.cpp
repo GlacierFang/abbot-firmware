@@ -17,7 +17,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "net_api.h"
 #include "ota_client.h"
+#include "ui_error.h"
 #include "ui_pages.h"
 
 #define OTA_TEXT_MAX 512
@@ -116,7 +118,13 @@ static void ota_page_render(char *out, size_t cap)
         ota_append(out, cap, &off, "正在重启，请稍候…\n");
     }
 
-    if (st.message[0] != '\0') {
+    /* 时钟熔断（doc/04 §1.3）：查更新被 net 层拦下时，别显示笼统的
+     * 「网络连接失败」—— 换成「设备时间尚未校准」这句真正有用的提示 */
+    if (st.state == OTA_STATE_FAILED && st.result == OTA_ERR_NET &&
+        net_clock_is_unverified()) {
+        ota_append(out, cap, &off, ui_error_text(ERR_CLOCK_NEED_SYNC));
+        ota_append(out, cap, &off, "\n");
+    } else if (st.message[0] != '\0') {
         ota_append(out, cap, &off, st.message);
         ota_append(out, cap, &off, "\n");
     }

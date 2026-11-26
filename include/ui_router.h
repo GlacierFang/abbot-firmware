@@ -33,7 +33,7 @@ extern "C" {
 
 /* ===================== 页面 ID ===================== */
 
-/* doc/03 的 13 个核心页面 */
+/* doc/03 的 14 个核心页面 */
 typedef enum {
     PAGE_HOME = 0,          /* 首页仪表盘 */
     PAGE_OOBE,              /* 首次开机引导 */
@@ -48,10 +48,11 @@ typedef enum {
     PAGE_OTA,               /* 固件升级 */
     PAGE_POMODORO,          /* 番茄钟 */
     PAGE_CITY,              /* 选择城市（设置页入口，doc/05 §5.2） */
+    PAGE_MANUAL_CLOCK,      /* 离线手动校时（设置页入口，doc/04 §1.3 时钟熔断兜底） */
     PAGE_COUNT
 } ui_page_t;
 
-/* doc/07 电子书模块子页面（不进 13 页计数） */
+/* doc/07 电子书模块子页面（不进 14 页计数） */
 typedef enum {
     PAGE_BOOKSHELF = 100,   /* 书架 */
     PAGE_READER,            /* 阅读正文 */

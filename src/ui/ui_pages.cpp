@@ -1,7 +1,7 @@
 /*
- * ui_pages.cpp —— 13 个核心页面 + 电子书子页面 + 三层浮层的 LVGL 骨架
+ * ui_pages.cpp —— 14 个核心页面 + 电子书子页面 + 三层浮层的 LVGL 骨架
  *
- * 契约来源: abbot/doc/03 §二 三区骨架 / §三 浮层优先级 / §五 13 页线框,
+ * 契约来源: abbot/doc/03 §二 三区骨架 / §三 浮层优先级 / §五 14 页线框,
  *           abbot/doc/07 电子书子页面。
  *
  * 设计约定:
@@ -606,6 +606,9 @@ static void ui_build_settings(lv_obj_t *content)
     if (s_city_value_label != NULL) {
         lv_label_set_text(s_city_value_label, "未设置");
     }
+    /* 第 9 项：离线手动校时（doc/04 §1.3 时钟熔断时的人工兜底） */
+    lv_obj_t *clock_row = ui_make_list_item(content, "  手动校时", NULL);
+    lv_obj_align(clock_row, LV_ALIGN_TOP_LEFT, 0, 8 * 40);
 }
 
 /* ===================== 13. 选择城市 (PAGE_CITY)
@@ -1395,6 +1398,228 @@ static void ui_build_book_locked(lv_obj_t *content)
     s_locked_body = body;
 }
 
+/* ===================== 14. 离线手动校时 (PAGE_MANUAL_CLOCK)
+ *
+ * doc/04 §1.3 时钟熔断（冷启动未校准 / 距上次校准超过 7 天）时，
+ * 云端导学请求会被 net 层直接拒绝（net_clock_gate_user_request）。
+ * 这一页是**人工兜底**：用户直接填一次本地墙钟（UTC+8），解掉熔断。
+ *
+ * 交互（doc/03 §3.2 六手势宪法，不自创手势）：
+ *   上 / 下  = 在「日期」「时间」两组数字之间切换（当前组高亮 + 行首标记）
+ *   左 / 右  = 数字键盘光标左右移动
+ *   短按     = 输入当前键（数字 / 退格 / 确定）
+ *   长按     = 退出回设置页
+ *
+ * 编辑状态复用 keypad_editor（纯逻辑，主机侧有单测）：两个编辑态各一个 ——
+ * 日期 8 位（YYYYMMDD）、时间 4 位（HHMM）。光标恒在末尾，所以输入即追加、
+ * 退格即删最后一位。
+ *
+ * 时间写入**只走 net 层 API**（net_clock_set_manual），UI 层不碰 hal_storage。
+ * ===================================================== */
+
+#define MC_KEY_COUNT   12
+#define MC_KEY_W       26
+#define MC_KEY_H       44
+#define MC_KEY_TOP_Y   176
+#define MC_DATE_LEN    8
+#define MC_TIME_LEN    4
+
+/* 数字键盘：0-9 + 退格 + 确定（单行一条，左右移动光标即可到达每一个键） */
+static const char *s_mc_keys[MC_KEY_COUNT] = {
+    "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "退", "确"
+};
+
+static keypad_editor_t s_mc_date;   /* 日期：8 位 YYYYMMDD */
+static keypad_editor_t s_mc_time;   /* 时间：4 位 HHMM */
+static int s_mc_group = 0;          /* 0 = 日期组，1 = 时间组 */
+static int s_mc_key = 0;            /* 数字键盘光标 0..MC_KEY_COUNT-1 */
+static lv_obj_t *s_mc_date_label = NULL;
+static lv_obj_t *s_mc_time_label = NULL;
+static lv_obj_t *s_mc_key_obj[MC_KEY_COUNT];
+static lv_obj_t *s_mc_key_label[MC_KEY_COUNT];
+
+/** 把已输入的数字按 YYYY-MM-DD / HH:MM 排版（输入几位显示几位）。 */
+static void mc_format_date(const char *digits, char *out, size_t cap)
+{
+    size_t n = strlen(digits);
+    size_t o = 0;
+    size_t i;
+    for (i = 0; i < n && o + 1 < cap; i++) {
+        if ((i == 4 || i == 6) && i < n) {
+            out[o++] = '-';
+        }
+        out[o++] = digits[i];
+    }
+    out[o] = '\0';
+}
+
+static void mc_format_time(const char *digits, char *out, size_t cap)
+{
+    size_t n = strlen(digits);
+    size_t o = 0;
+    size_t i;
+    for (i = 0; i < n && o + 1 < cap; i++) {
+        if (i == 2 && i < n) {
+            out[o++] = ':';
+        }
+        out[o++] = digits[i];
+    }
+    out[o] = '\0';
+}
+
+/** 重画两行输入 + 键盘高亮。 */
+static void mc_render(void)
+{
+    char buf[40];
+    char shown[MC_DATE_LEN + 4];
+
+    if (s_mc_date_label != NULL) {
+        mc_format_date(keypad_editor_text(&s_mc_date), shown, sizeof(shown));
+        snprintf(buf, sizeof(buf), "%s日期  %s", (s_mc_group == 0) ? "> " : "  ", shown);
+        lv_label_set_text(s_mc_date_label, buf);
+        lv_obj_set_style_text_color(s_mc_date_label,
+                                    (s_mc_group == 0) ? UI_C_ACCENT : UI_C_TEXT, 0);
+    }
+    if (s_mc_time_label != NULL) {
+        mc_format_time(keypad_editor_text(&s_mc_time), shown, sizeof(shown));
+        snprintf(buf, sizeof(buf), "%s时间  %s", (s_mc_group == 1) ? "> " : "  ", shown);
+        lv_label_set_text(s_mc_time_label, buf);
+        lv_obj_set_style_text_color(s_mc_time_label,
+                                    (s_mc_group == 1) ? UI_C_ACCENT : UI_C_TEXT, 0);
+    }
+
+    int i;
+    for (i = 0; i < MC_KEY_COUNT; i++) {
+        if (s_mc_key_label[i] == NULL) {
+            continue;
+        }
+        bool sel = (i == s_mc_key);
+        lv_obj_set_style_text_color(s_mc_key_label[i], sel ? UI_C_ACCENT : UI_C_TEXT, 0);
+        lv_obj_set_style_bg_color(s_mc_key_obj[i], sel ? UI_C_CARD : UI_C_BG, 0);
+        lv_obj_set_style_bg_opa(s_mc_key_obj[i], sel ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+    }
+}
+
+static void ui_build_manual_clock(lv_obj_t *content)
+{
+    lv_obj_t *title = ui_make_label(content, "离线手动校时", true);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
+
+    lv_obj_t *sub = ui_make_label(content, "北京时间（UTC+8）", false);
+    lv_obj_align(sub, LV_ALIGN_TOP_MID, 0, 28);
+
+    s_mc_date_label = ui_make_label(content, "  日期", false);
+    lv_obj_align(s_mc_date_label, LV_ALIGN_TOP_LEFT, 0, 70);
+
+    s_mc_time_label = ui_make_label(content, "  时间", false);
+    lv_obj_align(s_mc_time_label, LV_ALIGN_TOP_LEFT, 0, 104);
+
+    int i;
+    for (i = 0; i < MC_KEY_COUNT; i++) {
+        lv_obj_t *obj = lv_obj_create(content);
+        lv_obj_set_size(obj, MC_KEY_W - 2, MC_KEY_H);
+        lv_obj_set_pos(obj, 2 + i * MC_KEY_W, MC_KEY_TOP_Y);
+        lv_obj_set_style_bg_opa(obj, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(obj, 1, 0);
+        lv_obj_set_style_border_color(obj, UI_C_LINE, 0);
+        lv_obj_set_style_radius(obj, 4, 0);
+        lv_obj_set_style_pad_all(obj, 0, 0);
+        lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+
+        lv_obj_t *label = lv_label_create(obj);
+        lv_label_set_text(label, s_mc_keys[i]);
+        lv_obj_add_style(label, &s_style_body, 0);
+        lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
+        s_mc_key_obj[i] = obj;
+        s_mc_key_label[i] = label;
+    }
+}
+
+void ui_pages_manual_clock_enter(void)
+{
+    keypad_editor_init(&s_mc_date);
+    keypad_editor_set_mask(&s_mc_date, false);
+    keypad_editor_set_max_len(&s_mc_date, MC_DATE_LEN);
+    keypad_editor_init(&s_mc_time);
+    keypad_editor_set_mask(&s_mc_time, false);
+    keypad_editor_set_max_len(&s_mc_time, MC_TIME_LEN);
+    s_mc_group = 0;
+    s_mc_key = 0;
+    mc_render();
+}
+
+void ui_pages_manual_clock_move(int dx, int dy)
+{
+    if (dy != 0) {
+        /* 上 = 日期组，下 = 时间组（两组数字间切换） */
+        s_mc_group = (dy < 0) ? 0 : 1;
+    }
+    if (dx != 0) {
+        int k = s_mc_key + dx;
+        if (k < 0) {
+            k = 0;
+        }
+        if (k >= MC_KEY_COUNT) {
+            k = MC_KEY_COUNT - 1;
+        }
+        s_mc_key = k;
+    }
+    mc_render();
+}
+
+/** 解析数字串 → 各位数字。位数不对或含非数字即失败。 */
+static bool mc_parse(const char *digits, int len, int *out)
+{
+    size_t i;
+    if (strlen(digits) != (size_t)len) {
+        return false;
+    }
+    for (i = 0; i < (size_t)len; i++) {
+        if (digits[i] < '0' || digits[i] > '9') {
+            return false;
+        }
+        out[i] = digits[i] - '0';
+    }
+    return true;
+}
+
+mc_result_t ui_pages_manual_clock_action(void)
+{
+    const char *key = s_mc_keys[s_mc_key];
+    mc_result_t result = MC_RESULT_NONE;
+
+    if (key[0] >= '0' && key[0] <= '9' && key[1] == '\0') {
+        keypad_editor_t *ed = (s_mc_group == 0) ? &s_mc_date : &s_mc_time;
+        keypad_editor_insert(ed, key[0]);
+        /* 日期满 8 位自动进入时间组（两段式：先日期，后时间） */
+        if (s_mc_group == 0 && s_mc_date.len >= MC_DATE_LEN) {
+            s_mc_group = 1;
+        }
+    } else if (strcmp(key, "退") == 0) {
+        keypad_editor_t *ed = (s_mc_group == 0) ? &s_mc_date : &s_mc_time;
+        keypad_editor_backspace(ed);
+    } else if (strcmp(key, "确") == 0) {
+        int dv[MC_DATE_LEN];
+        int tv[MC_TIME_LEN];
+        if (!mc_parse(keypad_editor_text(&s_mc_date), MC_DATE_LEN, dv) ||
+            !mc_parse(keypad_editor_text(&s_mc_time), MC_TIME_LEN, tv)) {
+            result = MC_RESULT_BAD;
+        } else {
+            int year = dv[0] * 1000 + dv[1] * 100 + dv[2] * 10 + dv[3];
+            int month = dv[4] * 10 + dv[5];
+            int day = dv[6] * 10 + dv[7];
+            int hour = tv[0] * 10 + tv[1];
+            int minute = tv[2] * 10 + tv[3];
+            /* 时间写入只走 net 层 API（UI 层不碰 hal_storage） */
+            result = net_clock_set_manual(year, month, day, hour, minute)
+                         ? MC_RESULT_OK : MC_RESULT_BAD;
+        }
+    }
+
+    mc_render();
+    return result;
+}
+
 /* ===================== 页面表 ===================== */
 
 typedef void (*ui_page_builder_t)(lv_obj_t *content);
@@ -1413,6 +1638,7 @@ static const ui_page_builder_t s_page_builders[PAGE_COUNT] = {
     [PAGE_OTA]          = ui_build_ota,
     [PAGE_POMODORO]     = ui_build_pomodoro,
     [PAGE_CITY]         = ui_build_city,
+    [PAGE_MANUAL_CLOCK] = ui_build_manual_clock,
 };
 
 static const ui_page_builder_t s_book_builders[PAGE_BOOK_COUNT - PAGE_BOOKSHELF] = {
@@ -1439,6 +1665,7 @@ static const char *s_page_hints[PAGE_COUNT] = {
     [PAGE_OTA]          = "上下选择 | 短按确定 | 长按退出",
     [PAGE_POMODORO]     = "短按暂停/继续 | 长按结束退出",
     [PAGE_CITY]         = "上下选择 | 短按确定 | 长按退出",
+    [PAGE_MANUAL_CLOCK] = "上下切日期时间 | 左右选数字 | 短按输入 | 长按退出",
 };
 
 static const char *s_book_hints[PAGE_BOOK_COUNT - PAGE_BOOKSHELF] = {

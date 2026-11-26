@@ -1,7 +1,7 @@
 /*
  * ui_pages.h —— 页面与浮层的构建/显隐接口
  *
- * 契约来源: abbot/doc/03 §二 三区骨架 / §三 浮层优先级 / §五 13 页线框,
+ * 契约来源: abbot/doc/03 §二 三区骨架 / §三 浮层优先级 / §五 14 页线框,
  *           abbot/doc/07 电子书子页面。
  *
  * 本头只暴露"建页面"与"显隐", 不暴露路由决策 —— 路由在 ui_router.h。
@@ -120,6 +120,34 @@ void ui_pages_set_book_locked_text(const char *title, const char *body);
 int ui_pages_focus_minutes(void);
 /** 调整专注时长（delta = -1 减一档 / +1 加一档，步长 5 分钟），并立即落盘。 */
 void ui_pages_focus_adjust(int delta);
+
+/* ---------- 离线手动校时（PAGE_MANUAL_CLOCK，doc/04 §1.3） ---------- */
+/**
+ * 手动校时页的一次短按结果。
+ *
+ * - `MC_RESULT_NONE`  ：只是输入/删除了一位数字；
+ * - `MC_RESULT_OK`    ：手动校时成功（已写入设备时钟，熔断解除）；
+ * - `MC_RESULT_BAD`   ：参数非法（位数不对或日期越界）。
+ */
+typedef enum {
+    MC_RESULT_NONE = 0,
+    MC_RESULT_OK,
+    MC_RESULT_BAD
+} mc_result_t;
+
+/** 进入手动校时页：清空两组输入，光标复位。 */
+void ui_pages_manual_clock_enter(void);
+/**
+ * 方向键（doc/03 §3.2 六手势宪法）：
+ *   - `dy != 0`（上/下）：在「日期」「时间」两组数字之间切换；
+ *   - `dx != 0`（左/右）：数字键盘光标左右移动。
+ */
+void ui_pages_manual_clock_move(int dx, int dy);
+/**
+ * 短按：输入光标所在的键（数字 / 退格 / 确定）。
+ * 按「确定」时校验两组并调用 net 层 API 写时间（UI 层不碰 hal_storage）。
+ */
+mc_result_t ui_pages_manual_clock_action(void);
 
 /* ---------- Wi-Fi 扫描页（真实扫描结果） ---------- */
 /**

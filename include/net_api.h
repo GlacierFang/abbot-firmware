@@ -207,6 +207,29 @@ bool net_wifi_get_saved_ssid(char *out, size_t cap);
 
 /* ===================== 配对与时间 ===================== */
 bool net_sync_ntp_time(void);
+
+/* ---------- 时钟熔断与低磨损检查点（doc/04 §1.3） ---------- */
+
+/** 开机初始化：读出上次校时时间，判定时钟是否可信（熔断）。true = 可信。 */
+bool net_clock_boot_init(void);
+
+/** 当前时钟是否处于熔断态（true = 加密业务请求应暂缓）。 */
+bool net_clock_is_unverified(void);
+
+/** 熔断闸门：用户主动触发的加密请求（拍题 / 语音 / OTA 检查）先过这一关。 */
+bool net_clock_gate_user_request(const char *tag);
+
+/** 标记「刚刚完成一次可信校时」—— 解熔断并把 last_ntp 落 NVS。 */
+void net_clock_note_verified(void);
+
+/** 手动校时：写入本地墙钟（UTC+8），并解除熔断。false = 参数非法。 */
+bool net_clock_set_manual(int year, int month, int day, int hour, int minute);
+
+/** 整点低磨损检查点：到点才写一次 sys_clock。true = 本次写了。 */
+bool net_clock_checkpoint_if_due(void);
+
+/** 重试 NTP 校时（熔断态下用来解除熔断）。timeout_ms = 本次等待上限。 */
+bool net_clock_retry_sync(uint32_t timeout_ms);
 /**
  * 旧路径：网页端生成 6 位码、设备敲码换密钥。**默认不暴露**，仅在自动登记不可用时兜底。
  */
