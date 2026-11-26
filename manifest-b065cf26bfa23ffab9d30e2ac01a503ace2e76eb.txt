@@ -1,0 +1,31 @@
+### build 目录内容
+total 46288
+drwxr-xr-x 12 runner runner     4096 Nov 26 12:13 .
+drwxr-xr-x  3 runner runner     4096 Nov 26 12:12 ..
+-rw-r--r--  1 runner runner  2079902 Nov 26 12:13 .sconsign311.dblite
+drwxr-xr-x  3 runner runner     4096 Nov 26 12:13 FrameworkArduino
+-rw-r--r--  1 runner runner    15104 Nov 26 12:12 bootloader.bin
+-rw-r--r--  1 runner runner  1336928 Nov 26 12:13 firmware.bin
+-rwxr-xr-x  1 runner runner 24141460 Nov 26 12:13 firmware.elf
+-rw-r--r--  1 runner runner 15437815 Nov 26 12:13 firmware.map
+drwxr-xr-x  3 runner runner     4096 Nov 26 12:12 lib30b
+drwxr-xr-x  3 runner runner     4096 Nov 26 12:12 lib7aa
+drwxr-xr-x  3 runner runner     4096 Nov 26 12:12 lib989
+-rw-r--r--  1 runner runner  4327538 Nov 26 12:13 libFrameworkArduino.a
+drwxr-xr-x  3 runner runner     4096 Nov 26 12:12 liba33
+drwxr-xr-x  3 runner runner     4096 Nov 26 12:12 libb2c
+drwxr-xr-x  3 runner runner     4096 Nov 26 12:12 libc3a
+drwxr-xr-x  3 runner runner     4096 Nov 26 12:12 libe70
+drwxr-xr-x  3 runner runner     4096 Nov 26 12:12 libf02
+-rw-r--r--  1 runner runner     3072 Nov 26 12:12 partitions.bin
+drwxr-xr-x  5 runner runner     4096 Nov 26 12:12 src
+
+### 收集到的产物
+  bootloader.bin  15104 字节
+  firmware.bin  1336928 字节
+  partitions.bin  3072 字节
+  共 3 个 bin
+### sha256
+2a71d69b471e20c2bac7fb469f3c6a807b3ebee780e348e5889db0da849ca363  bootloader.bin
+908869480d69178eb9e98e56091adca1ce88cde03b578ecb1dd223af9bf42fe9  firmware.bin
+71939c82bec98f427052a1811aaa2a9bebfcf8cc107128341674de72f1f06ec6  partitions.bin
