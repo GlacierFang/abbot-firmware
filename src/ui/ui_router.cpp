@@ -280,9 +280,9 @@ ui_overlay_t ui_overlay_push(ui_overlay_t overlay)
         return ui_overlay_top();
     }
     /*
-     * 提醒弹窗打断录音（doc/03 §3.1 打断与保护恢复铁律）：
-     * 有效时长 >= 1.0 秒 → 存进待问队列；不足 → 直接丢弃。
-     * 这里只置标志，实际落盘在 Core 0 完成（UI 核不碰 TF 卡）。
+     * 提醒弹窗打断录音（doc/03 §3.1）：
+     * 录音一律丢弃（离线队列已按 2026-11-26 决定删除，不再自动存起来等补传）。
+     * 这里只置标志，实际释放缓冲在 Core 0 完成（UI 核不碰 PSRAM）。
      */
     if (overlay == OVERLAY_REMINDER) {
         voice_capture_interrupt();
@@ -470,8 +470,7 @@ static void ui_page_action(ui_page_t page)
         case 2: ui_router_go(PAGE_SUBJECT_LIST); break;
         case 3: ui_router_go_book(PAGE_BOOKSHELF); break;
         case 4: ui_router_go(PAGE_POMODORO); break;
-        case 5: ui_router_go(PAGE_OUTBOX); break;
-        case 6: ui_router_go(PAGE_SETTINGS); break;
+        case 5: ui_router_go(PAGE_SETTINGS); break;
         /* 语音提问 —— 从页面操作菜单进入录音（doc/03 §3.1） */
         case 1: ui_voice_enter("HOME", "", ""); break;
         default: break;
@@ -1146,9 +1145,16 @@ void ui_router_handle_net_reply(int32_t biz_code, char *payload, uint32_t len)
             return;
         }
         if (s_last_biz == 5001) {
-            /* 云端暂时性故障：net 层已把题目/录音存进待问收件箱（biz 可重试），
-             * 给专门提示（doc/03 ERR_SERVER_5001），别让用户以为白问了。 */
+            /* 云端暂时性故障（上游超时 / 并发被拒）—— 给专门提示
+             * （doc/03 ERR_SERVER_5001），别让用户以为白问了。
+             * 不排队、不补传：用户重试一次即可。 */
             ui_show_friendly_error(ERR_SERVER_5001);
+            return;
+        }
+        if (s_last_biz < 0) {
+            /* 传输层失败 = 连不上网关（无网络 / 未配对）。
+             * 这不是排队事件，就是一句「目前无网络」+ 允许重试。 */
+            ui_toast("目前无网络，请检查连接后重试");
             return;
         }
         ui_toast("网络请求未成功");

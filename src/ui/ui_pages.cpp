@@ -496,11 +496,10 @@ static void ui_build_home(lv_obj_t *content)
         "  [ 学科卡片 ]      已收录 4 个包",
         "  [ 电子书架 ]      今日剩 45 分钟",
         "  [ 专注番茄 ]      25分钟倒计时",
-        "  [ 待问队列 ]      0 条待同步",
         "  [ 系统设置 ]      WiFi/音量/OTA",
     };
     int i;
-    for (i = 0; i < 7; i++) {
+    for (i = 0; i < 6; i++) {
         lv_obj_t *row = ui_make_list_item(content, items[i], NULL);
         lv_obj_align(row, LV_ALIGN_TOP_LEFT, 0, 110 + i * 36);
     }
@@ -597,16 +596,6 @@ static void ui_build_pomodoro(lv_obj_t *content)
 
     lv_obj_t *note = ui_make_label(content, "到点会响一声提示音", false);
     lv_obj_align(note, LV_ALIGN_BOTTOM_MID, 0, 0);
-}
-
-/* 7. 待问收件箱 (PAGE_OUTBOX) */
-static void ui_build_outbox(lv_obj_t *content)
-{
-    lv_obj_t *title = ui_make_label(content, "待问队列 (0 / 10)", true);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
-
-    lv_obj_t *empty = ui_make_label(content, "暂时没有待发送的问题", false);
-    lv_obj_align(empty, LV_ALIGN_CENTER, 0, 0);
 }
 
 /* 8. 系统设置 (PAGE_SETTINGS)
@@ -1666,7 +1655,6 @@ static const ui_page_builder_t s_page_builders[PAGE_COUNT] = {
     [PAGE_CARD_STUDY]   = ui_build_card_study,
     [PAGE_CAMERA]       = ui_build_camera,
     [PAGE_SOLVE_RESULT] = ui_build_solve_result,
-    [PAGE_OUTBOX]       = ui_build_outbox,
     [PAGE_KEYBOARD]     = ui_build_keyboard,
     [PAGE_OTA]          = ui_build_ota,
     [PAGE_POMODORO]     = ui_build_pomodoro,
@@ -1693,7 +1681,6 @@ static const char *s_page_hints[PAGE_COUNT] = {
     [PAGE_CARD_STUDY]   = "左右翻卡 | 短按确定 | 长按退出",
     [PAGE_CAMERA]       = "短按拍照 | 长按退出",
     [PAGE_SOLVE_RESULT] = "上下滚动 | 短按确定 | 长按退出",
-    [PAGE_OUTBOX]       = "上下选择 | 短按确定 | 长按退出",
     [PAGE_KEYBOARD]     = "上下选择 | 短按输入 | 长按退出",
     [PAGE_OTA]          = "上下选择 | 短按确定 | 长按退出",
     [PAGE_POMODORO]     = "短按暂停/继续 | 长按结束退出",

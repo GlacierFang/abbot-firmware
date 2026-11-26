@@ -33,7 +33,6 @@ SCAN = [
     "src/net/net_dispatch.c",
     "src/net/net_req.c",
     "src/net/ota_client.c",
-    "src/net/outbox.c",
     "src/net/wifi_model.c",
     "src/net/cards.c",
     "src/net/net_client.c",

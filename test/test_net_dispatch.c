@@ -268,25 +268,6 @@ int main(void)
     free(resp);
     resp = NULL;
 
-    /* 2b. 语音断网 -> 入队（别让用户说的话白说） */
-    reset();
-    memset(&req, 0, sizeof req);
-    req.op = NET_OP_VOICE;
-    snprintf(req.context_page, sizeof req.context_page, "PAGE_CARD_STUDY");
-    snprintf(req.pack_id, sizeof req.pack_id, "m7_geo");
-    snprintf(req.card_id, sizeof req.card_id, "card_03");
-    snprintf(req.media_path, sizeof req.media_path, "/outbox/task_1.pcm");
-    req.pcm = (const int16_t *)"PCMDATA";
-    req.pcm_bytes = 7;
-    g_voice_ok = false;
-    rc = net_dispatch(&req, &resp);
-    CHECK(g_last_call == CALL_ENQUEUE_VOICE, "语音失败时入队而不是丢掉");
-    CHECK(strcmp(g_last_media, "/outbox/task_1.pcm") == 0, "入队带的是 PCM 路径");
-    CHECK(strcmp(g_last_context, "PAGE_CARD_STUDY|m7_geo|card_03") == 0, "入队带的是上下文三元组");
-    g_voice_ok = true;
-    free(resp);
-    resp = NULL;
-
     /* 3. 心跳同步 */
     reset();
     memset(&req, 0, sizeof req);
@@ -321,30 +302,15 @@ int main(void)
     free(resp);
     resp = NULL;
 
-    /* 5b. 拍题失败 -> 入队；拍题成功 -> 删媒体文件 */
+    /* 5b. 拍题失败（断网/未配对）-> 直接失败返回，不入队、不补传。
+     * 失败后由 UI 提示「目前无网络」，用户重拍一次即可（2026-11-26 定）。 */
     reset();
     memset(&req, 0, sizeof req);
     req.op = NET_OP_SOLVE;
     snprintf(req.session_id, sizeof req.session_id, "sess_1");
-    snprintf(req.media_path, sizeof req.media_path, "/outbox/task_42.jpg");
     g_solve_ok = false;          /* 模拟传输失败（断网/未配对） */
     rc = net_dispatch(&req, &resp);
-    CHECK(g_last_call == CALL_ENQUEUE, "拍题失败时入队而不是丢掉");
-    CHECK(strcmp(g_last_media, "/outbox/task_42.jpg") == 0, "入队带上媒体路径");
     CHECK(rc == -1, "失败返回 -1");
-    free(resp);
-    resp = NULL;
-
-    reset();
-    memset(&req, 0, sizeof req);
-    req.op = NET_OP_SOLVE;
-    snprintf(req.session_id, sizeof req.session_id, "sess_1");
-    snprintf(req.media_path, sizeof req.media_path, "/outbox/task_42.jpg");
-    g_solve_ok = true;           /* 模拟上传成功 */
-    rc = net_dispatch(&req, &resp);
-    CHECK(g_last_call != CALL_ENQUEUE, "拍题成功时不入队");
-    CHECK(g_cleanup_count == 1, "拍题成功时删掉卡上的媒体文件");
-    CHECK(strcmp(g_last_media, "/outbox/task_42.jpg") == 0, "删的是那张图");
     free(resp);
     resp = NULL;
 

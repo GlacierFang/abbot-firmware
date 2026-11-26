@@ -1,8 +1,8 @@
 // voice_capture.cpp —— 设备端语音录音生产者（doc/03 §3.1 录音浮层 / doc/04 §3.5 媒体铁律）
 //
 // 职责边界：
-//   本模块只做「录音 → 落盘 → 投递 NET_OP_VOICE」。
-//   离线补传、队列策略、淘汰规则全在 outbox 层，本模块不碰。
+//   本模块只做「录音 → 投递 NET_OP_VOICE」。PCM 一直在内存里，
+//   所有权随请求转给网络任务，用完即释放（2026-11-26 定：不做离线补传）。
 //   服务端零改动：仍复用 /api/v1/study/voice。
 //
 // 线程模型（doc/02 §4.1 双核铁律）：
@@ -73,22 +73,9 @@ uint8_t calc_level(const int16_t *pcm, size_t n)
     return voice_level_of(peak);
 }
 
-/** 录音落盘 → 投递网络请求（正常提交路径）。 */
+/** 录音 → 投递网络请求（正常提交路径）。 */
 void submit_recording(void)
 {
-    char path[72];
-    snprintf(path, sizeof(path), "/outbox/task_%u.pcm", (unsigned)millis());
-
-    bool saved = hal_storage_write_binary(path, (const uint8_t *)s_buf,
-                                          (uint32_t)voice_pcm_bytes(s_samples)) == HAL_OK;
-    if (!saved) {
-        /* 落盘失败 = 这段录音留不下来，直接丢弃，别让用户以为已经存好了。 */
-        toast("录音没能存下来，请再试一次。");
-        s_samples = 0;
-        s_state = kIdle;
-        return;
-    }
-
     net_request_t req = {};
     req.op = NET_OP_VOICE;
     req.pcm = s_buf;
@@ -96,43 +83,45 @@ void submit_recording(void)
     snprintf(req.context_page, sizeof(req.context_page), "%s", s_ctx.page);
     snprintf(req.pack_id, sizeof(req.pack_id), "%s", s_ctx.pack_id);
     snprintf(req.card_id, sizeof(req.card_id), "%s", s_ctx.card_id);
-    snprintf(req.media_path, sizeof(req.media_path), "%s", path);
 
     if (hal_net_request_queue() == NULL ||
         xQueueSend(hal_net_request_queue(), &req, 0) != pdTRUE) {
-        /* 网络队列都满了 —— 录音已经在卡上，入队等以后补传（doc/04 §3.5）。 */
-        net_outbox_enqueue_voice("", path, s_ctx.page, s_ctx.pack_id, s_ctx.card_id);
-        toast("已自动存入待问收件箱（联网后自动发送）。");
+        /* 网络队列都满了 —— 这次没送出去。录音不落盘、不入队
+         * （2026-11-26 定：不做离线补传），用户重录一次即可。 */
         heap_caps_free(s_buf);
         s_buf = nullptr;
         s_samples = 0;
         s_state = kIdle;
+        toast("网络忙，这次没送出去，请再说一次。");
         return;
     }
 
-    /* 所有权随请求转移：网络任务派发完调 voice_capture_free_pcm() 释放。
-     * 这里把 s_buf 置空 —— 下一段录音另开一块缓冲，
+    /*
+     * PCM 所有权随请求转移给网络任务 —— 这里把 s_buf 置空，
      * 用户不用等上一次网络往返结束就能接着说。 */
     s_buf = nullptr;
     s_samples = 0;
     s_state = kIdle;
 }
 
-/** 录音落盘 → 直接进待问队列（提醒打断铁律，doc/03 §3.1）。 */
-void save_to_outbox(const char *tip)
+
+/**
+ * 提醒打断录音（doc/03 §3.1）：**录音丢弃**。
+ *
+ * 以前会把这段录音存进离线队列等联网补传；那条链已按 2026-11-26 的决定删掉，
+ * 所以这里直接丢掉这段音频并告诉用户重说一遍。PSRAM 缓冲必须马上腾给提醒的 TTS。
+ */
+void abort_recording(const char *tip)
 {
-    char path[72];
-    snprintf(path, sizeof(path), "/outbox/task_%u.pcm", (unsigned)millis());
-    bool saved = hal_storage_write_binary(path, (const uint8_t *)s_buf,
-                                          (uint32_t)voice_pcm_bytes(s_samples)) == HAL_OK;
-    if (saved) {
-        if (net_outbox_enqueue_voice("", path, s_ctx.page, s_ctx.pack_id, s_ctx.card_id)) {
-            toast(tip);
-        }
-    }
     s_samples = 0;
+    s_level = 0;
+    s_elapsed_ms = 0;
     s_state = kIdle;
+    if (tip != nullptr) {
+        toast(tip);
+    }
 }
+
 
 /** 取消：不落盘、不入队。 */
 void discard_recording(void)
@@ -296,7 +285,7 @@ void voice_capture_audio_poll(void)
         }
         /* 有效时长不够 1.0 秒 → 直接丢弃，不入队（doc/03 §3.1 打断铁律）。 */
         if (s_samples >= VOICE_INTERRUPT_MIN_SAMPLES) {
-            save_to_outbox("录音已自动存入待问队列");
+            abort_recording("提醒打断了录音，请再说一次");
         } else {
             discard_recording();
         }

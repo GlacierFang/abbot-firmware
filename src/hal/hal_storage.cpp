@@ -30,7 +30,6 @@ static const char *kDirs[] = {
     "/subjects",
     "/books",
     "/records",
-    "/outbox",
     "/cache",
     "/cache/tts",
     "/logs",
@@ -49,7 +48,6 @@ static const kDefaultFile kDefaultFiles[] = {
     {"/records/progress.json", "{\n  \"cards\": {}\n}\n"},
     {"/records/mistakes.jsonl", ""},
     {"/records/bookmarks.json", "{\n  \"books\": {}\n}\n"},
-    {"/outbox/queue.json", "{\n  \"tasks\": []\n}\n"},
     {"/cache/weather.json", "{}\n"},
     {"/logs/crash.log", ""},
 };

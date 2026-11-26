@@ -14,7 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "outbox.h"
+#include "net_result.h"
 
 int net_dispatch(const net_request_t *req, char **out_resp_json)
 {
@@ -30,32 +30,18 @@ int net_dispatch(const net_request_t *req, char **out_resp_json)
         ok = net_study_solve(req->session_id, req->jpg, (size_t)req->jpg_len,
                              (const uint8_t *)req->pcm, (size_t)req->pcm_bytes,
                              req->hint_level, &biz, &resp);
-        if (ok && !(outbox_classify_result(biz) == OUTBOX_RESULT_RETRY)) {
-            /* 云端收下并处理完（biz=0），或明确拒收且重试无用
-             * （4003 没听清 / 4004 学段未设 / 4291 配额用完）
-             * —— 卡上那张图就没用了，删掉，不留垃圾
-             * （doc/04 §3.5 媒体垃圾文件清理铁律）。 */
-            net_media_cleanup(req->media_path);
-        } else {
-            /* 断网 / 未配对（传输失败），或云端暂时性故障（5001 上游超时 /
-             * 4290 并发被拒）—— 别让用户的拍照白拍：入队，等联网后补传。
-             * 业务错里的 4003 / 4004 / 4291 走上面那条删除分支：重试也没用。 */
-            net_outbox_enqueue_solve(req->session_id, req->media_path, req->hint_level);
-        }
+        /*
+         * 不排队、不补传（2026-11-26 定）：
+         *   传输失败（biz<0）-> UI 提示「目前无网络」，用户重拍即可；
+         *   云端暂时性故障（4290/5001）-> 已有专门提示，用户重试即可。
+         * 照片一直只在内存里活到这次请求结束（所有权随 net_request_t 转给网络任务）。
+         */
         break;
     case NET_OP_VOICE:
         ok = net_study_voice(req->context_page, req->pack_id, req->card_id,
                              (const uint8_t *)req->pcm, (size_t)req->pcm_bytes,
                              &biz, &resp);
-        if (ok && !(outbox_classify_result(biz) == OUTBOX_RESULT_RETRY)) {
-            /* 同上：云端收下并处理完，或明确拒收且重试无用。 */
-            net_media_cleanup(req->media_path);
-        } else {
-            /* 断网 / 未配对，或云端暂时性故障 —— 别让用户说的话白说：
-             * 入队，等联网后补传。 */
-            net_outbox_enqueue_voice(req->session_id, req->media_path,
-                                     req->context_page, req->pack_id, req->card_id);
-        }
+        /* 同上：不排队、不补传，录音用完即释放，用户重录一次即可。 */
         break;
     case NET_OP_BOOTSTRAP:
         ok = net_sync_bootstrap_auto(&biz, &resp);

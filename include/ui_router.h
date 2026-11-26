@@ -43,7 +43,6 @@ typedef enum {
     PAGE_CARD_STUDY,        /* 学科包卡片 */
     PAGE_CAMERA,            /* 取景器 */
     PAGE_SOLVE_RESULT,      /* 解析结果 */
-    PAGE_OUTBOX,            /* 离线发件箱 */
     PAGE_KEYBOARD,          /* 文本输入（答案录入等） */
     PAGE_OTA,               /* 固件升级 */
     PAGE_POMODORO,          /* 番茄钟 */
