@@ -42,7 +42,7 @@ extern "C" {
 /**
  * 一个学科包里最多带多少张卡。
  *
- * 128 是**内存预算**出来的数字：单卡 1192 字节 × 128 ≈ 148KB。
+ * 128 是**内存预算**出来的数字：单卡 1200 字节 × 128 ≈ 150KB。
  * 板子有 8MB OPI PSRAM（platformio.ini `board_build.arduino.memory_type = qio_opi`
  * + `BOARD_HAS_PSRAM`），所以卡片集在 `tasks.cpp` 里用
  * `heap_caps_malloc(..., MALLOC_CAP_SPIRAM)` 优先放 PSRAM，内部 RAM 只做回落。
@@ -64,7 +64,7 @@ extern "C" {
 #define CARD_QUESTION_MAX 128  /* 正面：知识点标题 / 要点 */
 #define CARD_ANSWER_MAX   512  /* 背面：知识点解释（标准定义） */
 #define CARD_HINT_MAX     512  /* AI 辅助说明（通俗比喻），空串 = 没有 */
-#define CARD_CHAPTER_MAX  24   /* 章节归属键，空串 = 不分组 */
+#define CARD_CHAPTER_MAX  32   /* 章节归属键，空串 = 不分组（10 汉字） */
 
 /** 一张卡 = 一个知识点。 */
 typedef struct {
