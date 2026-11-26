@@ -2676,7 +2676,7 @@ static void ui_book_menu_render(void)
 
     int i;
     for (i = 0; i < s_menu_count; i++) {
-        char text[48];
+        char text[64];
         switch (s_menu_actions[i]) {
         case UI_BOOK_ACT_TOC:
             snprintf(text, sizeof(text), "章节目录跳转");
@@ -2692,7 +2692,7 @@ static void ui_book_menu_render(void)
             snprintf(text, sizeof(text), "返回书架");
             break;
         }
-        char line[64];
+        char line[96];   /* 前缀 2 字节 + text 最多 63 字节 + 结尾 */
         snprintf(line, sizeof(line), "%s%s", (i == s_book_menu_sel) ? "> " : "  ", text);
         lv_obj_t *row = ui_make_label(content, line, false);
         lv_obj_align(row, LV_ALIGN_TOP_LEFT, 0, 56 + i * 40);
@@ -2768,6 +2768,9 @@ static void ui_book_toc_load_page_titles(int page)
         while (j < got && s_toc_readbuf[j] != '\n') {
             j++;
         }
+        if (j >= got) {
+            break;   /* 末行不完整 → 不解析 */
+        }
         ui_data_toc_item_t item;
         if (ui_data_parse_toc((const char *)&s_toc_readbuf[i], j - i, s_reader_size, &item) == 1) {
             memcpy(s_toc_titles[n], item.title, sizeof(item.title));
@@ -2798,12 +2801,12 @@ static void ui_book_toc_render(void)
         s_book_toc_page = 0;
     }
 
-    char head[48];
+    char head[64];
     snprintf(head, sizeof(head), "章节目录 (共 %d 章)", s_chapter_count);
     lv_obj_t *title = ui_make_label(content, head, true);
     lv_obj_align(title, LV_ALIGN_TOP_LEFT, 0, 0);
 
-    char pagetxt[24];
+    char pagetxt[40];
     snprintf(pagetxt, sizeof(pagetxt), "%d/%d 页", s_book_toc_page + 1, pages);
     lv_obj_t *pg = ui_make_label(content, pagetxt, false);
     lv_obj_align(pg, LV_ALIGN_TOP_RIGHT, 0, 0);
@@ -2840,7 +2843,7 @@ static void ui_book_jump_render(void)
     lv_obj_t *title = ui_make_label(content, "进度定位跳转", true);
     lv_obj_align(title, LV_ALIGN_TOP_LEFT, 0, 0);
 
-    char pcttxt[32];
+    char pcttxt[40];
     snprintf(pcttxt, sizeof(pcttxt), "目标阅读进度: %d%%", s_book_jump_pct);
     lv_obj_t *pct = ui_make_label(content, pcttxt, false);
     lv_obj_align(pct, LV_ALIGN_TOP_MID, 0, 90);
