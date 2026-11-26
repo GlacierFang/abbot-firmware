@@ -199,6 +199,10 @@ int ui_pages_card_count(void);
 int ui_pages_card_index(void);
 /** 当前是不是显示背面（答案）。 */
 bool ui_pages_card_answer_shown(void);
+/** 当前学科包 id（卡片页用；没有卡片集则空串）。 */
+const char *ui_pages_current_pack_id(void);
+/** 当前卡片的 id（卡片页用；没有卡片集则空串）。 */
+const char *ui_pages_current_card_id(void);
 /** 显示第 index 张卡（show_answer = true 显示背面）。 */
 void ui_pages_show_card(int index, bool show_answer);
 

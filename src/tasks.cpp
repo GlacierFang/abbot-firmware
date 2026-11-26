@@ -33,6 +33,7 @@
 #include "lvgl.h"
 #include "ui_display_port.h"
 #include "ui_router.h"
+#include "voice_capture.h"
 
 static const char *TAG = "tasks";
 
@@ -170,6 +171,15 @@ static void task_audio(void *arg)
     (void)arg;
     QueueHandle_t q = hal_audio_pcm_queue();
     for (;;) {
+        /*
+         * 录音进行中：I2S 的 RX 归录音用（半双工），期间**不碰播放队列** ——
+         * 播放会 uninstall I2S 驱动换向，直接把正在录的这段掐断。
+         */
+        if (voice_capture_busy()) {
+            voice_capture_audio_poll();
+            vTaskDelay(pdMS_TO_TICKS(5));
+            continue;
+        }
         audio_msg_t msg;
         if (q == NULL || xQueueReceive(q, &msg, portMAX_DELAY) != pdTRUE) {
             continue;
@@ -180,7 +190,9 @@ static void task_audio(void *arg)
             hal_audio_write_pcm(msg.samples, msg.len);
             break;
         case 2: /* 开始录音 */
-            hal_audio_start_record();
+            /* 真正的开录动作在 voice_capture_audio_poll() 里（它管上下文与缓冲）；
+             * 这里只负责把音频任务叫醒。 */
+            voice_capture_audio_poll();
             break;
         case 3: /* 结束录音 */
             hal_audio_stop_record();
@@ -464,6 +476,11 @@ static void task_net_worker(void *arg)
             /* JPEG 所有权随请求转移过来 —— 用完必须在这里释放 */
             if (req.jpg != NULL) {
                 hal_camera_release_jpeg(req.jpg);
+            }
+
+            /* PCM 同理：录音模块把缓冲所有权交给请求，用完必须释放（否则 PSRAM 泄漏）。 */
+            if (req.op == NET_OP_VOICE && req.pcm != NULL) {
+                voice_capture_free_pcm(req.pcm);
             }
 
             ui_command_t cmd = {};

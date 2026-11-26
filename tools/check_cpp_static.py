@@ -41,6 +41,7 @@ SCAN = [
     "src/ui/ui_weather.c",
     "src/ui/ui_book_guard.c",
     "src/ui/keypad_editor.c",
+    "src/voice_capture.cpp",
 ]
 
 DEF_RE = re.compile(r"^static\s+[\w\*\s]+?\b(\w+)\s*\([^;]*?\)\s*;?\s*$", re.M)

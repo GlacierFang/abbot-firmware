@@ -14,5 +14,7 @@
 void *heap_caps_malloc(size_t size, uint32_t caps);
 void *heap_caps_realloc(void *ptr, size_t size, uint32_t caps);
 void heap_caps_free(void *ptr);
+/* 剩余可用字节数 —— 录音前要确认 PSRAM 够放 320KB 缓冲（doc/03 ERR_PSRAM_OOM）。 */
+size_t heap_caps_get_free_size(uint32_t caps);
 
 #endif /* ABBOT_STUB_ESP_HEAP_CAPS_H */

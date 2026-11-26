@@ -46,3 +46,21 @@ g++ -fsyntax-only \
     src/net/ota_client_esp.cpp
 
 echo "OK: src/net/ota_client_esp.cpp 通过主机侧语法检查"
+
+# 语音录音生产者（voice_capture.cpp）—— 依赖 Arduino / FreeRTOS / esp_heap_caps，
+# 全部走 host_stubs。录音的纯逻辑（字节数 / 时长下限 / 音量分档）另有单测。
+echo "=== 语音录音模块主机侧语法检查（stub 头，非固件编译）==="
+g++ -fsyntax-only \
+    -Wall -Wextra -Werror \
+    -Wformat=2 \
+    -I test/host_stubs -I include -I src \
+    src/voice_capture.cpp
+
+echo "OK: src/voice_capture.cpp 通过主机侧语法检查"
+
+# 语音录音纯逻辑单测（主机侧可跑）
+echo "=== 语音录音纯逻辑单测 ==="
+gcc -Wall -Wextra -Werror -I include -I src \
+    test/test_voice_capture.c \
+    -o /tmp/test_voice_capture
+/tmp/test_voice_capture

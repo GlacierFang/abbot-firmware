@@ -95,6 +95,11 @@ jobs:
               test/test_outbox.c src/net/outbox.c \
               -o /tmp/test_outbox
           /tmp/test_outbox
+          # 语音录音生产者（voice_capture）——纯逻辑部分（字节数/时长下限/音量分档）
+          gcc -Wall -Wextra -Werror -I include -I src \
+              test/test_voice_capture.c \
+              -o /tmp/test_voice_capture
+          /tmp/test_voice_capture
           # 学科卡片包（cards）——纯 C，自带假存储任务
           # 含 doc/05 §3.4 的官方锁定向量（cards.enc 局部块偏移解密）
           gcc -Wall -Wextra -Werror -I test/host_stubs -I include -I src \

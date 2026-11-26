@@ -1314,6 +1314,19 @@ bool ui_pages_card_answer_shown(void)
     return s_card_show_answer;
 }
 
+const char *ui_pages_current_pack_id(void)
+{
+    return (s_cards != NULL) ? s_cards->pack_id : "";
+}
+
+const char *ui_pages_current_card_id(void)
+{
+    if (s_cards == NULL || s_card_index < 0 || s_card_index >= s_cards->count) {
+        return "";
+    }
+    return s_cards->items[s_card_index].id;
+}
+
 /** 显示第 index 张卡（show_answer = true 显示背面）。 */
 void ui_pages_show_card(int index, bool show_answer)
 {

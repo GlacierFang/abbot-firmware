@@ -23,6 +23,7 @@
 #include "ui_pages.h"
 #include "ui_ota_page.h"
 #include "ui_weather.h"
+#include "voice_capture.h"
 
 #include "hal_interfaces.h"   /* 背光、音频（Arduino.h 也从这里进来） */
 
@@ -35,6 +36,9 @@ static bool s_overlay_visible[OVERLAY_COUNT] = {false, false, false};
 
 /* 本题会话号计数器（doc/05 §5.1：每题唯一，同题追问沿用同一个） */
 static uint32_t s_session_seq = 0;
+
+/* 从页面操作菜单进入语音录音（doc/03 §3.1 的进入方式） */
+static void ui_voice_enter(const char *page, const char *pack_id, const char *card_id);
 
 /* 最近一次云端应答（解密后的业务明文）—— 由网络任务经队列投递过来 */
 static char *s_last_reply = NULL;
@@ -275,6 +279,14 @@ ui_overlay_t ui_overlay_push(ui_overlay_t overlay)
     if (overlay == OVERLAY_RECORDING && s_in_book) {
         return ui_overlay_top();
     }
+    /*
+     * 提醒弹窗打断录音（doc/03 §3.1 打断与保护恢复铁律）：
+     * 有效时长 >= 1.0 秒 → 存进待问队列；不足 → 直接丢弃。
+     * 这里只置标志，实际落盘在 Core 0 完成（UI 核不碰 TF 卡）。
+     */
+    if (overlay == OVERLAY_REMINDER) {
+        voice_capture_interrupt();
+    }
     s_overlay_visible[overlay] = true;
     ui_overlay_sync_visibility();
     return ui_overlay_top();
@@ -454,7 +466,8 @@ static void ui_page_action(ui_page_t page)
         case 4: ui_router_go(PAGE_POMODORO); break;
         case 5: ui_router_go(PAGE_OUTBOX); break;
         case 6: ui_router_go(PAGE_SETTINGS); break;
-        case 1: ui_toast("语音提问还在准备中"); break;
+        /* 语音提问 —— 从页面操作菜单进入录音（doc/03 §3.1） */
+        case 1: ui_voice_enter("HOME", "", ""); break;
         default: break;
         }
         break;
@@ -572,16 +585,17 @@ static void ui_page_action(ui_page_t page)
             ui_pages_show_card(ui_pages_card_index(), !ui_pages_card_answer_shown());
             break;
         case 1:
-            /* 语音追问这题 —— 语音链路尚未接通 */
-            ui_toast("语音追问还在准备中");
+            /* 语音追问这题 —— 带上学科包与卡片号，云端才知道在问哪张卡 */
+            ui_voice_enter("CARD", ui_pages_current_pack_id(),
+                           ui_pages_current_card_id());
             break;
         default:
             break;
         }
         break;
     case PAGE_SOLVE_RESULT:
-        /* 菜单项「口述你的思路」—— 语音链路尚未打通 */
-        ui_toast("口述思路还在准备中");
+        /* 菜单项「口述你的思路」 */
+        ui_voice_enter("RESULT", "", "");
         break;
     case PAGE_WIFI_SCAN:
         /* 短按：选中热点 →（加密的）进键盘输密码；（开放的）直接连 */
@@ -761,20 +775,46 @@ static void ui_handle_recording_gesture(ui_gesture_t gesture)
 {
     switch (gesture) {
     case GESTURE_CLICK:
-        /* 短按结束并提交: 具体提交动作由 task_audio 监听浮层状态完成 */
+        /* 短按结束并提交（doc/03 §3.1）：落盘与投递在 Core 0 完成。 */
+        voice_capture_stop();
         ui_overlay_pop(OVERLAY_RECORDING);
         break;
     case GESTURE_UP:
-        /* 上推取消 */
+        /* 上推取消：不落盘、不入队 */
+        voice_capture_cancel();
         ui_overlay_pop(OVERLAY_RECORDING);
         break;
     case GESTURE_LONG:
         /* 长按等同于取消 */
+        voice_capture_cancel();
         ui_overlay_pop(OVERLAY_RECORDING);
         break;
     default:
         break;
     }
+}
+
+/**
+ * 从页面操作菜单进入语音录音（doc/03 §3.1 的进入方式）。
+ *
+ * 三个入口共用这一处：首页「语音提问」、解析页「口述你的思路」、卡片页「语音追问这题」。
+ * UI 核只置意图标志并推浮层 —— 采集、落盘、投递都在 Core 0（不阻塞 UI）。
+ */
+static void ui_voice_enter(const char *page, const char *pack_id, const char *card_id)
+{
+    /* 阅读模块内全局屏蔽录音（doc/07 §一）—— 这里再兜一道底。 */
+    if (s_in_book) {
+        return;
+    }
+    voice_context_t ctx = {};
+    snprintf(ctx.page, sizeof(ctx.page), "%s", page != NULL ? page : "");
+    snprintf(ctx.pack_id, sizeof(ctx.pack_id), "%s", pack_id != NULL ? pack_id : "");
+    snprintf(ctx.card_id, sizeof(ctx.card_id), "%s", card_id != NULL ? card_id : "");
+    if (!voice_capture_start(&ctx)) {
+        return; /* 失败原因已由语音模块提示过 */
+    }
+    ui_overlay_set_text(OVERLAY_RECORDING, "正在录音…  短按结束  上推取消");
+    ui_overlay_push(OVERLAY_RECORDING);
 }
 
 void ui_router_handle_gesture(ui_gesture_t gesture)
@@ -953,6 +993,22 @@ void ui_router_tick(void)
      * 番茄钟的倒计时挂在这里 —— 用毫秒计数，不做秒级累加。 */
     uint32_t now = (uint32_t)millis();
     ui_pages_pomodoro_tick(now);
+
+    /*
+     * 录音浮层：倒计时与音量档（doc/03 §3.1 的动态显示）。
+     * 录音结束（短按提交 / 上推取消 / 满 10 秒自动停）后把浮层收掉。
+     */
+    if (ui_overlay_top() == OVERLAY_RECORDING) {
+        if (!voice_capture_busy()) {
+            ui_overlay_pop(OVERLAY_RECORDING);
+        } else {
+            uint32_t left_ms = 10000u - voice_capture_elapsed_ms();
+            char buf[64];
+            snprintf(buf, sizeof(buf), "正在录音…  剩余 %u 秒  音量 %u/5",
+                     (unsigned)(left_ms / 1000), (unsigned)voice_capture_level());
+            ui_overlay_set_text(OVERLAY_RECORDING, buf);
+        }
+    }
 
     /* Wi-Fi 扫描页：轮询真扫描结果与连接状态（doc/03 §五 第 11 页） */
     if (s_current == PAGE_WIFI_SCAN) {
