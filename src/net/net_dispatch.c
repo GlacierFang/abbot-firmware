@@ -27,7 +27,10 @@ int net_dispatch(const net_request_t *req, char **out_resp_json)
 
     switch (req->op) {
     case NET_OP_SOLVE:
-        ok = net_study_solve(req->session_id, req->jpg, (size_t)req->jpg_len,
+        /* 当前卡片上下文随请求带上来（doc/05 §5.1）——
+         * 服务端据此把学生屏幕上那张卡的内容注入拍题教学 prompt。 */
+        ok = net_study_solve(req->session_id, req->pack_id, req->card_id,
+                             req->jpg, (size_t)req->jpg_len,
                              (const uint8_t *)req->pcm, (size_t)req->pcm_bytes,
                              req->hint_level, &biz, &resp);
         /*

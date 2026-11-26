@@ -99,8 +99,15 @@ int nr_build_ota_url(const char *host, const char *mount,
 
 /* ---------- 业务明文组装（out 可为 NULL，此时只算所需长度，含结尾 NUL） ---------- */
 
-/** `POST /api/v1/study/solve` 明文（doc/05 §5.1）。 */
+/** `POST /api/v1/study/solve` 明文（doc/05 §5.1）。
+ *
+ *  pack_id / card_id = 当前卡片上下文，键名与语音链路一致
+ *  （`context.pack_id` / `context.card_id`，doc/05 §4.3 / §5.1）。
+ *  没有卡片上下文时传 NULL 或空串 —— 明文里仍然带这两个键、值为空，
+ *  服务端据此退化为「纯画面 + 语音」讲解。
+ */
 int nr_build_solve_plain(const nr_profile_t *prof, const char *session_id,
+                         const char *pack_id, const char *card_id,
                          const uint8_t *jpg, size_t jpg_len,
                          const uint8_t *pcm, size_t pcm_len,
                          uint8_t hint_level,

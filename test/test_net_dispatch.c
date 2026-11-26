@@ -60,6 +60,8 @@ static int g_last_quota = 0;
 static int g_last_hint = 0;
 static size_t g_last_jpg_len = 0;
 static size_t g_last_pcm_len = 0;
+static char g_last_pack_id[24] = { 0 };
+static char g_last_card_id[24] = { 0 };
 static int g_cleanup_count = 0;
 static bool g_solve_ok = true;   /* 桩的拍题结果：默认成功，测试里可改成失败 */
 static bool g_voice_ok = true;   /* 桩的语音结果：默认成功，测试里可改成失败 */
@@ -74,7 +76,8 @@ static char *make_resp(void)
     return p;
 }
 
-bool net_study_solve(const char *session_id, const uint8_t *jpg_data, size_t jpg_len,
+bool net_study_solve(const char *session_id, const char *pack_id, const char *card_id,
+                     const uint8_t *jpg_data, size_t jpg_len,
                      const uint8_t *pcm_data, size_t pcm_len, uint8_t hint_level,
                      int *out_biz_code, char **out_resp_json)
 {
@@ -82,6 +85,9 @@ bool net_study_solve(const char *session_id, const uint8_t *jpg_data, size_t jpg
     (void)pcm_data;
     g_last_call = CALL_SOLVE;
     snprintf(g_last_session, sizeof g_last_session, "%s", session_id ? session_id : "");
+    /* 当前卡片上下文（doc/05 §5.1）：原样带到 net 层 */
+    snprintf(g_last_pack_id, sizeof g_last_pack_id, "%s", pack_id ? pack_id : "");
+    snprintf(g_last_card_id, sizeof g_last_card_id, "%s", card_id ? card_id : "");
     g_last_jpg_len = jpg_len;
     g_last_pcm_len = pcm_len;
     g_last_hint = hint_level;
@@ -240,10 +246,14 @@ int main(void)
     req.jpg = (uint8_t *)"JPEGDATA";
     req.jpg_len = 8;
     req.hint_level = 2;
+    snprintf(req.pack_id, sizeof req.pack_id, "m7_geo");
+    snprintf(req.card_id, sizeof req.card_id, "card_03");
     int rc = net_dispatch(&req, &resp);
     CHECK(g_last_call == CALL_SOLVE, "op=拍题 路由到 study/solve");
     CHECK(rc == 0, "拍题返回业务码 0");
     CHECK(strcmp(g_last_session, "sess_1795412000") == 0, "session_id 原样传下去");
+    CHECK(strcmp(g_last_pack_id, "m7_geo") == 0, "pack_id 原样传下去");
+    CHECK(strcmp(g_last_card_id, "card_03") == 0, "card_id 原样传下去");
     CHECK(g_last_jpg_len == 8, "图片长度原样传下去");
     CHECK(g_last_hint == 2, "hint_level 原样传下去");
     CHECK(resp != NULL && strcmp(resp, "{\"ok\":1}") == 0, "业务明文原样返回");

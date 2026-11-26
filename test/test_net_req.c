@@ -86,7 +86,8 @@ static void test_solve_plain(void)
     const uint8_t jpg[] = { 0xFF, 0xD8, 0xFF, 0xE0, 0x01, 0x02, 0x03 };
     const uint8_t pcm[] = { 0x01, 0x02, 0x03, 0x04, 0x05 };
 
-    int need = nr_build_solve_plain(&prof, "sess_1795412000", jpg, sizeof jpg,
+    int need = nr_build_solve_plain(&prof, "sess_1795412000", "m7_geo", "card_03",
+                                    jpg, sizeof jpg,
                                     pcm, sizeof pcm, 1, NULL, 0);
     CHECK(need > 0, "需要长度应为正");
 
@@ -95,7 +96,8 @@ static void test_solve_plain(void)
     if (buf == NULL) {
         return;
     }
-    int rc = nr_build_solve_plain(&prof, "sess_1795412000", jpg, sizeof jpg,
+    int rc = nr_build_solve_plain(&prof, "sess_1795412000", "m7_geo", "card_03",
+                                  jpg, sizeof jpg,
                                   pcm, sizeof pcm, 1, buf, (size_t)need);
     CHECK(rc == need, "返回长度应与预测量一致");
 
@@ -105,6 +107,14 @@ static void test_solve_plain(void)
     CHECK(nr_json_get_string(buf, strlen(buf), "solve_session_id", val, sizeof val) > 0,
           "solve_session_id 可取");
     CHECK_STR(val, "sess_1795412000", "solve_session_id 值");
+
+    /* 当前卡片上下文（doc/05 §5.1）：键名与语音链路一致 */
+    CHECK(nr_json_get_string(buf, strlen(buf), "pack_id", val, sizeof val) > 0,
+          "pack_id 可取");
+    CHECK_STR(val, "m7_geo", "pack_id 值");
+    CHECK(nr_json_get_string(buf, strlen(buf), "card_id", val, sizeof val) > 0,
+          "card_id 可取");
+    CHECK_STR(val, "card_03", "card_id 值");
 
     /* edu_stage / enrollment_year / device_remaining_quota 必须由 net 层自动注入 */
     CHECK(nr_json_get_string(buf, strlen(buf), "edu_stage", val, sizeof val) > 0,
@@ -154,14 +164,19 @@ static void test_solve_plain_no_pcm(void)
     prof.device_remaining_quota = 0;
 
     const uint8_t jpg[] = { 0xFF, 0xD8 };
-    int need = nr_build_solve_plain(&prof, "s1", jpg, sizeof jpg, NULL, 0, 0, NULL, 0);
+    int need = nr_build_solve_plain(&prof, "s1", NULL, NULL, jpg, sizeof jpg,
+                                    NULL, 0, 0, NULL, 0);
     char *buf = (char *)malloc((size_t)need);
     if (buf == NULL) {
         CHECK(0, "分配缓冲区");
         return;
     }
-    nr_build_solve_plain(&prof, "s1", jpg, sizeof jpg, NULL, 0, 0, buf, (size_t)need);
+    nr_build_solve_plain(&prof, "s1", NULL, NULL, jpg, sizeof jpg,
+                         NULL, 0, 0, buf, (size_t)need);
     CHECK(strstr(buf, "pcm_base64") == NULL, "无音频时不应出现 pcm_base64");
+    /* 没有卡片上下文时也要带这两个键（值为空）—— 服务端据此区分「无上下文」 */
+    CHECK(strstr(buf, "\"context\":{\"pack_id\":\"\",\"card_id\":\"\"}") != NULL,
+          "无卡片上下文时仍带 context 键（空值）");
     CHECK(strstr(buf, "\"edu_stage\":\"PRIMARY\"") != NULL, "edu_stage 仍然注入");
     CHECK(nr_json_get_int(buf, strlen(buf), "hint_level", -1) == 0, "hint_level=0");
     free(buf);

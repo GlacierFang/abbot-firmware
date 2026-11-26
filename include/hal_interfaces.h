@@ -58,9 +58,11 @@ hal_status_t hal_camera_stop_preview(void);
 /**
  * 提交一次抓拍请求（投递到 `q_photo_request`，doc/02 §4.2 队列表已定的方向）。
  * `session_id` 是本题会话号（doc/05 §5.1：同题追问沿用同一个），可传 NULL。
+ * `pack_id` / `card_id` 是当前卡片上下文（doc/05 §5.1），可传 NULL 或空串。
  * 队列满时返回 `HAL_ERR_NO_SPACE`，由 UI 层给出温和中文提示。
  */
-hal_status_t hal_photo_request_submit(const char *session_id, uint8_t want_uxga, uint8_t with_voice);
+hal_status_t hal_photo_request_submit(const char *session_id, uint8_t want_uxga, uint8_t with_voice,
+                                      const char *pack_id, const char *card_id);
 
 /* ---------- hal_audio：ICS43434 + MAX98357 半双工 I2S ---------- */
 hal_status_t hal_audio_init(void);

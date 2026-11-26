@@ -183,13 +183,19 @@ int nr_build_ota_url(const char *host, const char *mount,
 /* ===================== 业务明文组装 ===================== */
 
 static void fill_solve_plain(nr_sb_t *sb, const nr_profile_t *prof, const char *session_id,
+                             const char *pack_id, const char *card_id,
                              const uint8_t *jpg, size_t jpg_len,
                              const uint8_t *pcm, size_t pcm_len, uint8_t hint_level)
 {
     sb_putc(sb, '{');
     sb_puts(sb, "\"solve_session_id\":");
     sb_json_str(sb, session_id);
-    sb_puts(sb, ",\"image_b64\":\"");
+    /* 当前卡片上下文 —— 与语音链路同键名（doc/05 §5.1） */
+    sb_puts(sb, ",\"context\":{\"pack_id\":");
+    sb_json_str(sb, pack_id != NULL ? pack_id : "");
+    sb_puts(sb, ",\"card_id\":");
+    sb_json_str(sb, card_id != NULL ? card_id : "");
+    sb_puts(sb, "},\"image_b64\":\"");
     sb_base64(sb, jpg, jpg_len);
     sb_puts(sb, "\"");
     if (pcm != NULL && pcm_len > 0) {
@@ -204,6 +210,7 @@ static void fill_solve_plain(nr_sb_t *sb, const nr_profile_t *prof, const char *
 }
 
 int nr_build_solve_plain(const nr_profile_t *prof, const char *session_id,
+                         const char *pack_id, const char *card_id,
                          const uint8_t *jpg, size_t jpg_len,
                          const uint8_t *pcm, size_t pcm_len,
                          uint8_t hint_level,
@@ -215,12 +222,12 @@ int nr_build_solve_plain(const nr_profile_t *prof, const char *session_id,
     if (out == NULL) {
         nr_sb_t sb;
         sb_init(&sb, NULL, 0);
-        fill_solve_plain(&sb, prof, session_id, jpg, jpg_len, pcm, pcm_len, hint_level);
+        fill_solve_plain(&sb, prof, session_id, pack_id, card_id, jpg, jpg_len, pcm, pcm_len, hint_level);
         return (int)(sb.len + 1);
     }
     nr_sb_t sb;
     sb_init(&sb, out, out_cap);
-    fill_solve_plain(&sb, prof, session_id, jpg, jpg_len, pcm, pcm_len, hint_level);
+    fill_solve_plain(&sb, prof, session_id, pack_id, card_id, jpg, jpg_len, pcm, pcm_len, hint_level);
     if (sb.overflow) {
         return -2;
     }

@@ -137,6 +137,9 @@ static void task_camera(void *arg)
             nreq.hint_level = 0;
             nreq.with_voice = req.with_voice;
             snprintf(nreq.session_id, sizeof(nreq.session_id), "%s", req.session_id);
+            /* 当前卡片上下文（doc/05 §5.1）：学生拍题时正在看的那张知识点卡片 */
+            snprintf(nreq.pack_id, sizeof(nreq.pack_id), "%s", req.pack_id);
+            snprintf(nreq.card_id, sizeof(nreq.card_id), "%s", req.card_id);
             nreq.jpg = jpg;
             nreq.jpg_len = (uint32_t)len;
             if (xQueueSend(hal_net_request_queue(), &nreq, 0) != pdTRUE) {

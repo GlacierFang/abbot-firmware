@@ -51,7 +51,8 @@ QueueHandle_t hal_storage_req_queue(void) { return s_q_storage; }
  * 提交一次抓拍请求（UI 核 → 相机任务）。
  * 队列满不阻塞 UI：直接回 `HAL_ERR_NO_SPACE`，由 UI 层出温和提示。
  */
-hal_status_t hal_photo_request_submit(const char *session_id, uint8_t want_uxga, uint8_t with_voice)
+hal_status_t hal_photo_request_submit(const char *session_id, uint8_t want_uxga, uint8_t with_voice,
+                                      const char *pack_id, const char *card_id)
 {
     if (s_q_photo == NULL) {
         return HAL_ERR_INVALID;
@@ -62,6 +63,13 @@ hal_status_t hal_photo_request_submit(const char *session_id, uint8_t want_uxga,
     req.with_voice = with_voice;
     if (session_id != NULL) {
         strncpy(req.session_id, session_id, sizeof(req.session_id) - 1);
+    }
+    /* 当前卡片上下文：拍题时要拿它对齐学生屏幕上那张卡（doc/05 §5.1） */
+    if (pack_id != NULL) {
+        strncpy(req.pack_id, pack_id, sizeof(req.pack_id) - 1);
+    }
+    if (card_id != NULL) {
+        strncpy(req.card_id, card_id, sizeof(req.card_id) - 1);
     }
     if (xQueueSend(s_q_photo, &req, 0) != pdTRUE) {
         return HAL_ERR_NO_SPACE;

@@ -130,6 +130,11 @@ typedef struct {
     uint8_t want_uxga; /* 1=UXGA 抓拍, 0=HVGA 预览 */
     uint8_t with_voice; /* 边说边拍 */
     char session_id[32]; /* 本题会话号（doc/05 §5.1：同题追问沿用同一个） */
+    /* 当前卡片上下文（doc/05 §5.1）：学生拍题时屏幕上正在看的那张知识点卡片。
+     * 随请求一路带到 net 层，最终写进 solve 明文的 context.pack_id / context.card_id。
+     * 没有卡片上下文时留空 —— 服务端据此退化为「纯画面 + 语音」讲解。 */
+    char pack_id[24];
+    char card_id[24];
 } photo_request_t;
 
 typedef struct {

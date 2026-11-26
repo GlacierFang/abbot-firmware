@@ -1548,7 +1548,8 @@ bool net_sync_bootstrap_auto(int *out_biz_code, char **out_resp_json)
     return ok;
 }
 
-bool net_study_solve(const char *session_id, const uint8_t *jpg_data, size_t jpg_len,
+bool net_study_solve(const char *session_id, const char *pack_id, const char *card_id,
+                     const uint8_t *jpg_data, size_t jpg_len,
                      const uint8_t *pcm_data, size_t pcm_len, uint8_t hint_level,
                      int *out_biz_code, char **out_resp_json)
 {
@@ -1568,7 +1569,8 @@ bool net_study_solve(const char *session_id, const uint8_t *jpg_data, size_t jpg
     prof.enrollment_year = ctx.enrollment_year;
     prof.device_remaining_quota = ctx.device_remaining_quota;
 
-    int need = nr_build_solve_plain(&prof, session_id, jpg_data, jpg_len,
+    int need = nr_build_solve_plain(&prof, session_id, pack_id, card_id,
+                                    jpg_data, jpg_len,
                                     pcm_data, pcm_len, hint_level, NULL, 0);
     if (need <= 0) {
         return false;
@@ -1577,7 +1579,8 @@ bool net_study_solve(const char *session_id, const uint8_t *jpg_data, size_t jpg
     if (plain == NULL) {
         return false;
     }
-    if (nr_build_solve_plain(&prof, session_id, jpg_data, jpg_len,
+    if (nr_build_solve_plain(&prof, session_id, pack_id, card_id,
+                             jpg_data, jpg_len,
                              pcm_data, pcm_len, hint_level, plain, (size_t)need) < 0) {
         free(plain);
         return false;

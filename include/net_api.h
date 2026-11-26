@@ -60,8 +60,8 @@ typedef struct {
     const int16_t *pcm;  /* 16kHz PCM（可为空） */
     uint32_t pcm_bytes;  /* PCM **字节数**（16bit/Mono 裸 PCM = 采样点数 × 2） */
     char context_page[16]; /* NET_OP_VOICE：当前页面 */
-    char pack_id[24];      /* NET_OP_VOICE / NET_OP_CARDS：学科包 id */
-    char card_id[24];      /* NET_OP_VOICE */
+    char pack_id[24];      /* NET_OP_VOICE / NET_OP_SOLVE / NET_OP_CARDS：学科包 id */
+    char card_id[24];      /* NET_OP_VOICE / NET_OP_SOLVE：当前卡片 id */
     char pair_code[8];     /* NET_OP_PAIR：6 位配对码 */
     char edu_stage[16];    /* NET_OP_PROFILE：学段 */
     int enrollment_year;   /* NET_OP_PROFILE：入学年 */
@@ -262,8 +262,10 @@ bool net_sync_bootstrap_auto(int *out_biz_code, char **out_resp_json);
 /**
  * 支持纯拍照(pcm_data=NULL)与边说边拍(pcm_data 为 16kHz PCM 缓冲，内部 Base64 编码至 pcm_base64)。
  * edu_stage / enrollment_year / device_remaining_quota 由本层从 profile 缓存自动注入。
+ * pack_id / card_id 为当前卡片上下文，写进明文的 context.pack_id / context.card_id（doc/05 §5.1）。
  */
-bool net_study_solve(const char *session_id, const uint8_t *jpg_data, size_t jpg_len,
+bool net_study_solve(const char *session_id, const char *pack_id, const char *card_id,
+                     const uint8_t *jpg_data, size_t jpg_len,
                      const uint8_t *pcm_data, size_t pcm_len, uint8_t hint_level,
                      int *out_biz_code, char **out_resp_json);
 bool net_study_voice(const char *context_page, const char *pack_id, const char *card_id,

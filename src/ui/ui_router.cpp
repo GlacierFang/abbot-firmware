@@ -452,7 +452,11 @@ static void ui_page_action(ui_page_t page)
         char sid[32];
         s_session_seq++;
         snprintf(sid, sizeof(sid), "sess_%u", (unsigned)s_session_seq);
-        if (hal_photo_request_submit(sid, 1, 0) == HAL_OK) {
+        /* 当前卡片上下文（doc/05 §5.1）：拍题时对齐学生屏幕上正在看的那张卡。
+         * 没有打开学科包时这两个值是空串，服务端据此退化为纯画面讲解。 */
+        if (hal_photo_request_submit(sid, 1, 0,
+                                     ui_pages_current_pack_id(),
+                                     ui_pages_current_card_id()) == HAL_OK) {
             ui_toast("已拍照，正在解题");
         } else {
             ui_toast("相机忙，请稍后再试");
