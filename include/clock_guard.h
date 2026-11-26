@@ -21,6 +21,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /** doc/04 §1.3：距上次校时超过 7 天（或从未校准）即熔断。 */
 #define CLOCK_GUARD_UNVERIFIED_DAYS 7u
 
@@ -42,5 +46,9 @@ uint64_t clock_guard_last_checkpoint_epoch(void);
 /** 本地墙钟（UTC+8）→ UTC Unix 时间戳。非法输入返回 0。 */
 uint64_t clock_guard_epoch_from_local(int year, int month, int day, int hour, int minute,
                                        int32_t tz_offset_sec);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* ABBOT_CLOCK_GUARD_H */

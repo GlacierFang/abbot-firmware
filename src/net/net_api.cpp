@@ -24,8 +24,9 @@
 
 #include <stdlib.h>
 
+#include <sys/time.h>
+
 #include "clock_guard.h"
-extern "C" void setTime(unsigned long sec, unsigned long usec, unsigned long sync_delay);
 
 #include <esp_heap_caps.h>
 #include <time.h>
@@ -317,7 +318,13 @@ bool net_clock_set_manual(int year, int month, int day, int hour, int minute)
     }
     /* configTime 负责把时区偏移设成 UTC+8；setTime 写的是 UTC 时刻。 */
     configTime(8 * 3600, 0, "ntp.aliyun.com", "cn.pool.ntp.org");
-    setTime((unsigned long)epoch, 0, 0);
+    /* arduino-esp32 2.0.17 的核心没有 setTime()（只有 configTime/configTzTime），
+     * 手动写钟用 POSIX 的 settimeofday：写的是 UTC 时刻，
+     * UTC+8 的偏移由上面的 configTime 负责（核心 localtime 会加这个偏移）。 */
+    struct timeval tv;
+    tv.tv_sec = (time_t)epoch;
+    tv.tv_usec = 0;
+    settimeofday(&tv, NULL);
     net_clock_note_verified();
     Serial.printf("[%s] manual clock set %04d-%02d-%02d %02d:%02d\n", NET_TAG,
                   year, month, day, hour, minute);
