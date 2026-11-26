@@ -236,6 +236,97 @@ int ui_data_write_text(const char *path, const char *text, uint32_t len)
 }
 
 /* ============================================================
+ * 百分比定位与目录解析（doc/07 §3.4 / §2.2）
+ * ============================================================ */
+
+uint32_t ui_data_percent_to_offset(uint32_t total_bytes, uint32_t target_pct)
+{
+    if (total_bytes == 0u) {
+        return 0u;
+    }
+    if (target_pct >= 100u) {
+        /* 末页保护：直接落到 EOF 会白屏，退 256 字节再由调用方做 UTF-8 对齐 */
+        return (total_bytes > 256u) ? (total_bytes - 256u) : 0u;
+    }
+    return (uint32_t)(((uint64_t)total_bytes * (uint64_t)target_pct) / 100u);
+}
+
+int ui_data_parse_toc(const char *line, uint32_t len, uint32_t file_size,
+                      ui_data_toc_item_t *out)
+{
+    uint32_t bar = 0;
+    int has_bar = 0;
+    uint32_t end = len;
+    uint32_t off = 0;
+    uint32_t k;
+
+    if (line == NULL || out == NULL || len == 0) {
+        return 0;
+    }
+    /* CRLF 文件的行尾 \r 不算偏移量的一部分 */
+    if (line[end - 1u] == '\r') {
+        end--;
+        if (end == 0) {
+            return 0;
+        }
+    }
+    /* 分隔符取行内**最后一个** '|'：章节标题本身允许含 '|'（doc/07 §6-3） */
+    for (k = 0; k < end; k++) {
+        if (line[k] == '|') {
+            bar = k;
+            has_bar = 1;
+        }
+    }
+    if (!has_bar || bar == 0) {
+        return 0;   /* 无分隔符 / 标题为空 → 整行丢弃 */
+    }
+    if (bar + 1u >= end) {
+        return 0;   /* '|' 后没有偏移量 */
+    }
+    for (k = bar + 1u; k < end; k++) {
+        char c = line[k];
+        if (c < '0' || c > '9') {
+            return 0;   /* 偏移量非十进制整数 → 整行丢弃 */
+        }
+        if (off > (0xFFFFFFFFu - 9u) / 10u) {
+            return 0;   /* 偏移量溢出 → 整行丢弃 */
+        }
+        off = off * 10u + (uint32_t)(c - '0');
+    }
+    if (file_size != 0u && off >= file_size) {
+        return 0;   /* 偏移量越过正文末尾 → 整行丢弃 */
+    }
+    {
+        /* 标题按**完整字符**装进缓冲：半个字绝不留在屏幕上（doc/07 §3.2） */
+        uint32_t title_len = 0;
+        uint32_t i = 0;
+        while (i < bar) {
+            uint8_t c = (uint8_t)line[i];
+            uint32_t n = 1;
+            if ((c & 0xE0) == 0xC0) {
+                n = 2;
+            } else if ((c & 0xF0) == 0xE0) {
+                n = 3;
+            } else if ((c & 0xF8) == 0xF0) {
+                n = 4;
+            }
+            if (i + n > bar) {
+                break;   /* 最后一个字符被 '|' 截断 → 不装 */
+            }
+            if (title_len + n > (uint32_t)sizeof(out->title) - 1u) {
+                break;   /* 放不下 → 停在完整字符边界 */
+            }
+            title_len += n;
+            i += n;
+        }
+        memcpy(out->title, line, title_len);
+        out->title[title_len] = '\0';
+        out->offset = off;
+    }
+    return 1;
+}
+
+/* ============================================================
  * UTF-8 边界对齐（doc/07 §3.2）
  * ============================================================ */
 

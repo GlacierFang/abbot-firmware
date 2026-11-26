@@ -113,6 +113,36 @@ int ui_data_dir_usage(const char *dir, uint64_t *out_bytes);
 /** 原子写文本（.tmp → flush → 校验长度 → .bak → 重命名，doc/04 §2.3）。 */
 int ui_data_write_text(const char *path, const char *text, uint32_t len);
 
+/* ===================== 百分比定位与目录解析（doc/07 §3.4 / §2.2） ===================== */
+/**
+ * 百分比 → 字节偏移（doc/07 §3.4 跳转算法，纯函数）：
+ *   - `total_bytes == 0`  → 0；
+ *   - `target_pct >= 100` → `(total_bytes > 256) ? total_bytes - 256 : 0`
+ *     （直接落到 EOF 会白屏，退 256 字节再对齐）；
+ *   - 否则 → `total_bytes * target_pct / 100`。
+ * 结果还需经 UTF-8 首字节对齐（`ui_data_utf8_align_forward`）才是合法落点。
+ */
+uint32_t ui_data_percent_to_offset(uint32_t total_bytes, uint32_t target_pct);
+
+/** 目录条目（doc/07 §2.2 的「章节标题|起始字节偏移量」）。 */
+typedef struct {
+    char     title[32];
+    uint32_t offset;
+} ui_data_toc_item_t;
+
+/**
+ * 解析 `.toc` 的**一行**（doc/07 §2.2 / §6 第 3 条），对异常行免疫：
+ *   - 分隔符取行内**最后一个** `|` —— 章节标题本身允许含 `|`；
+ *   - 无 `|` / 标题为空 / 偏移量非十进制整数 / `offset >= file_size` → **整行丢弃**；
+ *   - 行尾的 `\r`（CRLF 文件）先剥掉再判数字；
+ *   - `file_size == 0` 表示正文大小未知，不做上界检查。
+ *
+ * 成功返回 1 并写入 `out`（标题超长时截断），失败返回 0。
+ * 固件侧流式扫描 `.toc` 时逐行调用它，主机侧测试也直接测它 —— 同一份代码。
+ */
+int ui_data_parse_toc(const char *line, uint32_t len, uint32_t file_size,
+                      ui_data_toc_item_t *out);
+
 /* ===================== UTF-8 边界（doc/07 §3.2） ===================== */
 /**
  * 向后对齐到 UTF-8 字符首字节：偏移处字节满足 `(byte & 0xC0) == 0x80`

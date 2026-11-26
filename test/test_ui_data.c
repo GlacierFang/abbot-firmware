@@ -601,6 +601,87 @@ static void test_weather_cache(void)
     CHECK(ui_data_weather_cache_get(NULL, 10, &len) == UI_DATA_ERR_INVALID, "NULL 缓冲应被拒");
 }
 
+
+/* ===================== 百分比跳转与目录解析（doc/07 §3.4 / §6 第 3 条） ===================== */
+
+static void test_percent_jump(void)
+{
+    /* 常规落点 */
+    CHECK(ui_data_percent_to_offset(1000, 0) == 0, "0%% 应落在文件开头");
+    CHECK(ui_data_percent_to_offset(1000, 50) == 500, "50%% 应落在文件中部");
+    CHECK(ui_data_percent_to_offset(1000, 99) == 990, "99%% 应接近文件末尾");
+    /* 100% 的末页保护：直接落到 EOF 会白屏，退 256 字节 */
+    CHECK(ui_data_percent_to_offset(1000, 100) == 744, "100%% 应退 256 字节避开白屏");
+    CHECK(ui_data_percent_to_offset(200, 100) == 0, "小文件 100%% 应落在开头");
+    CHECK(ui_data_percent_to_offset(0, 50) == 0, "空文件应落在 0");
+}
+
+static void test_toc_parse(void)
+{
+    ui_data_toc_item_t it;
+
+    /* 正常行 */
+    CHECK(ui_data_parse_toc("第一章|100", strlen("第一章|100"), 1000, &it) == 1,
+          "正常行应解析成功");
+    CHECK(it.offset == 100, "偏移量应正确，实际 %u", it.offset);
+    CHECK(strcmp(it.title, "第一章") == 0, "标题应正确，实际 %s", it.title);
+
+    /* 标题本身含竖线：取最后一个 | 作分隔符 */
+    {
+        const char *ln = "第一章|插叙|200";
+        CHECK(ui_data_parse_toc(ln, strlen(ln), 1000, &it) == 1, "标题含竖线应解析成功");
+        CHECK(it.offset == 200, "含竖线行的偏移量应正确，实际 %u", it.offset);
+        CHECK(strcmp(it.title, "第一章|插叙") == 0, "含竖线行的标题应保留竖线，实际 %s", it.title);
+    }
+
+    /* 异常行整行丢弃（doc/07 §6 第 3 条） */
+    {
+        const char *ln = "没有分隔符";
+        CHECK(ui_data_parse_toc(ln, strlen(ln), 1000, &it) == 0, "无分隔符的脏行应被丢弃");
+    }
+    {
+        const char *ln = "|100";
+        CHECK(ui_data_parse_toc(ln, strlen(ln), 1000, &it) == 0, "标题为空的行应被丢弃");
+    }
+    {
+        const char *ln = "第一章|abc";
+        CHECK(ui_data_parse_toc(ln, strlen(ln), 1000, &it) == 0, "偏移量非数字应被丢弃");
+    }
+    {
+        const char *ln = "第一章|5000";
+        CHECK(ui_data_parse_toc(ln, strlen(ln), 1000, &it) == 0, "偏移量越过正文末尾应被丢弃");
+    }
+
+    /* CRLF 行尾 */
+    {
+        const char *ln = "第一章|300\r";
+        CHECK(ui_data_parse_toc(ln, strlen(ln), 1000, &it) == 1, "CRLF 行尾应能解析");
+        CHECK(it.offset == 300, "CRLF 行的偏移量应正确，实际 %u", it.offset);
+    }
+
+    /* 超长标题截断不能切半个字 */
+    {
+        char ln[80];
+        int i;
+        for (i = 0; i < 20; i++) {
+            ln[i * 3 + 0] = (char)0xE7;
+            ln[i * 3 + 1] = (char)0xAC;
+            ln[i * 3 + 2] = (char)0xA0;   /* 「章」× 20 = 60 字节 */
+        }
+        memcpy(ln + 60, "|100", 4);
+        CHECK(ui_data_parse_toc(ln, 64, 1000, &it) == 1, "超长标题应解析成功");
+        CHECK(strlen(it.title) <= 31, "超长标题应被截断到 31 字节内，实际 %u", (unsigned)strlen(it.title));
+        CHECK(strlen(it.title) % 3 == 0, "截断后的标题应是完整字符，实际 %u 字节",
+              (unsigned)strlen(it.title));
+    }
+
+    /* 正文大小未知时不做上界检查 */
+    {
+        const char *ln = "第一章|5000";
+        CHECK(ui_data_parse_toc(ln, strlen(ln), 0, &it) == 1, "大小未知时不做上界检查");
+    }
+}
+
 int main(void)
 {
     test_utf8_align();
@@ -611,6 +692,8 @@ int main(void)
     test_schedule();
     test_settings();
     test_date();
+    test_percent_jump();
+    test_toc_parse();
 
     /* ---------- 请求/应答通道（假存储任务） ---------- */
     {

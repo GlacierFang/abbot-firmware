@@ -140,7 +140,7 @@ static lv_obj_t *s_oobe_state_label = NULL;
 /* ===================== 书架与阅读页（doc/07） ===================== */
 
 #define UI_MAX_BOOKS       8    /* 书架最多列出的书 */
-#define UI_MAX_CHAPTERS    16   /* 目录最多解析的章节 */
+#define UI_MAX_CHAPTERS    128  /* 章节索引上限（每章 8 字节索引） */
 #define UI_READER_HISTORY  16   /* 往回翻记住的页起点数 */
 
 static char s_book_names[UI_MAX_BOOKS][UI_DATA_MAX_NAME];
@@ -153,13 +153,50 @@ static char s_reader_path[UI_DATA_MAX_PATH];
 static uint32_t s_reader_offset = 0;
 static uint32_t s_reader_consumed = 0;
 static uint32_t s_reader_size = 0;
+
+/* ===================== 阅读子页状态（菜单 / 目录 / 跳转） =====================
+ *
+ * 三个子页共用同一套结构：进页重建 → 手势改状态 → 再重建。
+ *   PAGE_BOOK_MENU  快捷菜单（目录 / 百分比定位 / 亮度 / 返回书架）
+ *   PAGE_BOOK_TOC   章节目录（8 章一页，左右翻页，短按跳章）
+ *   PAGE_BOOK_JUMP  百分比定位（左右 ±1%，上下 ±10%，短按确认跳转）
+ * 跳转落点一律走 ui_data_percent_to_offset() + UTF-8 首字节对齐（doc/07 §3.4）。
+ * ================================================================================== */
+#define UI_TOC_PER_PAGE   8     /* 目录页每页章数（doc/07 §4.2 ④） */
+#define UI_TOC_TITLE_MAX  32    /* 单个章节标题最长字节 */
+#define UI_JUMP_BLOCKS    16    /* 跳转页进度条格数（16 全角格 = 256px，容得下） */
+#define UI_MENU_ROWS      4     /* 菜单最多 4 项（doc/07 §4.2 ③） */
+
+static int s_book_menu_sel = 0;    /* 菜单光标 */
+static int s_book_toc_sel = 0;     /* 目录选中章（全局索引） */
+static int s_book_toc_page = 0;    /* 目录当前页 */
+static int s_book_jump_pct = 0;    /* 跳转目标百分比 */
+
+/* 菜单项动作码（定义在 ui_pages.h，ui_router 依此跳转） */
+static int s_menu_actions[UI_MENU_ROWS];
+static int s_menu_count = 0;
+
+/* 章节索引：只存两样 —— 每章在正文里的字节偏移、每章在 .toc 里的行首位置。
+ * 章节标题**不常驻内存**：显示哪一页，才把那 8 行按位置读回来
+ * （doc/07 §4.2 ④「每页显示 8 章，流式局部读取」）。 */
+static uint32_t s_chapter_offsets[UI_MAX_CHAPTERS];
+static uint32_t s_chapter_toc_pos[UI_MAX_CHAPTERS];
+static int s_chapter_count = 0;
+static char s_chapter_title[UI_TOC_TITLE_MAX];   /* 正文状态栏用的当前章节名 */
+static int s_chapter_title_idx = -1;
+static char s_toc_path[UI_DATA_MAX_PATH];
+static uint32_t s_toc_size = 0;
+
+/* .toc 流式读取的缓冲（静态，不占 UI 任务栈） */
+static uint8_t s_toc_chunk[256];
+static char s_toc_line[96];
+static uint8_t s_toc_readbuf[1024];
+
+static char s_toc_titles[UI_TOC_PER_PAGE][UI_TOC_TITLE_MAX];  /* 当前页标题缓存 */
+static int s_toc_page_cached = -1;                            /* 标题缓存对应的页号 */
 static uint32_t s_reader_history[UI_READER_HISTORY];
 static int s_reader_history_count = 0;
 static lv_obj_t *s_reader_body = NULL;
-
-static char s_chapter_titles[UI_MAX_CHAPTERS][32];
-static uint32_t s_chapter_offsets[UI_MAX_CHAPTERS];
-static int s_chapter_count = 0;
 
 /* ===================== 阅读护栏（doc/07 §2.3 / §2.4） ===================== */
 
@@ -1364,40 +1401,23 @@ static void ui_build_reader(lv_obj_t *content)
 
 static void ui_build_book_menu(lv_obj_t *content)
 {
-    static const char *items[] = {
-        "> 目录",
-        "  跳转",
-        "  亮度",
-        "  退出阅读",
-    };
-    int i;
-    for (i = 0; i < 4; i++) {
-        lv_obj_t *row = ui_make_list_item(content, items[i], NULL);
-        lv_obj_align(row, LV_ALIGN_TOP_LEFT, 0, i * 44);
-    }
+    /* 内容由 ui_book_menu_render() 按真实状态重建（进页时清空重画）。 */
+    lv_obj_t *title = ui_make_label(content, "阅 读 功 能 菜 单", true);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
 }
 
 static void ui_build_book_toc(lv_obj_t *content)
 {
-    static const char *items[] = {
-        "> 第一章  帽子",
-        "  第二章  玫瑰",
-        "  第三章  星球",
-    };
-    int i;
-    for (i = 0; i < 3; i++) {
-        lv_obj_t *row = ui_make_list_item(content, items[i], NULL);
-        lv_obj_align(row, LV_ALIGN_TOP_LEFT, 0, i * 44);
-    }
+    /* 内容由 ui_book_toc_render() 按 .toc 真实章节重建。 */
+    lv_obj_t *title = ui_make_label(content, "章节目录", true);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
 }
 
 static void ui_build_book_jump(lv_obj_t *content)
 {
-    lv_obj_t *title = ui_make_label(content, "跳转到", true);
+    /* 内容由 ui_book_jump_render() 按目标百分比重建。 */
+    lv_obj_t *title = ui_make_label(content, "进度定位跳转", true);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
-
-    lv_obj_t *bar = ui_make_label(content, "████████░░░░░░░░  50%", false);
-    lv_obj_align(bar, LV_ALIGN_CENTER, 0, 0);
 }
 
 static void ui_build_book_locked(lv_obj_t *content)
@@ -2404,73 +2424,128 @@ int ui_pages_bookshelf_move(int delta)
     return c;
 }
 
-/** 解析同名 .toc：每行「章节标题|起始字节偏移量」（doc/07 §2.2）。 */
+/**
+ * 流式扫一遍同名 .toc（每行「章节标题|起始字节偏移量」，doc/07 §2.2）。
+ *
+ * 只记两样：每章在正文里的字节偏移 + 每章在 .toc 里的行首位置。
+ * 章节标题**不常驻内存** —— 显示哪一页，才把那几行按位置读回来
+ * （doc/07 §4.2 ④「每页显示 8 章，流式局部读取」）。
+ *
+ * 异常行整行丢弃（doc/07 §6 第 3 条）：无分隔符 / 标题为空 / 偏移量非十进制整数 /
+ * 偏移量越过正文末尾；标题本身含 '|' 竖线照样能解析。
+ */
 static void ui_reader_load_toc(void)
 {
     s_chapter_count = 0;
-    char toc_path[UI_DATA_MAX_PATH];
-    snprintf(toc_path, sizeof(toc_path), "%s", s_reader_path);
-    size_t n = strlen(toc_path);
+    s_chapter_title_idx = -1;
+    s_chapter_title[0] = '\0';
+    s_toc_page_cached = -1;
+    memset(s_toc_titles, 0, sizeof(s_toc_titles));
+    s_toc_path[0] = '\0';
+    s_toc_size = 0;
+
+    size_t n = strlen(s_reader_path);
     if (n < 4) {
         return;
     }
-    memcpy(toc_path + n - 4, ".toc", 5);
+    snprintf(s_toc_path, sizeof(s_toc_path), "%s", s_reader_path);
+    memcpy(s_toc_path + n - 4, ".toc", 5);
 
-    static char buf[1024];
-    uint32_t len = 0;
-    if (ui_data_read_text(toc_path, buf, (uint32_t)sizeof(buf), &len) != UI_DATA_OK) {
+    if (ui_data_file_size(s_toc_path, &s_toc_size) != UI_DATA_OK || s_toc_size == 0) {
         return;
     }
-    uint32_t i = 0;
-    while (i < len && s_chapter_count < UI_MAX_CHAPTERS) {
-        uint32_t j = i;
-        while (j < len && buf[j] != '\n') {
-            j++;
+
+    uint32_t pos = 0;
+    uint32_t line_start = 0;   /* 当前行在 .toc 里的起始字节 */
+    uint32_t line_len = 0;
+    bool line_over = false;    /* 行过长 → 整行丢弃 */
+
+    while (pos < s_toc_size && s_chapter_count < UI_MAX_CHAPTERS) {
+        uint32_t want = (uint32_t)sizeof(s_toc_chunk);
+        if (s_toc_size - pos < want) {
+            want = s_toc_size - pos;
         }
-        uint32_t bar = i;
-        while (bar < j && buf[bar] != '|') {
-            bar++;
+        uint32_t got = 0;
+        int rc = ui_data_read_range(s_toc_path, pos, s_toc_chunk, want, &got);
+        if (rc < 0 || got == 0) {
+            break;
         }
-        if (bar < j && bar > i) {
-            uint32_t title_len = bar - i;
-            if (title_len < (uint32_t)sizeof(s_chapter_titles[0])) {
-                uint32_t off = 0;
-                uint32_t k = bar + 1;
-                bool ok = (k < j);
-                while (k < j) {
-                    char c = buf[k];
-                    if (c < '0' || c > '9') {
-                        ok = false;
-                        break;
+        for (uint32_t k = 0; k < got; k++) {
+            char c = (char)s_toc_chunk[k];
+            if (c == '\n') {
+                if (!line_over && line_len > 0) {
+                    ui_data_toc_item_t item;
+                    if (ui_data_parse_toc(s_toc_line, line_len, s_reader_size, &item) == 1) {
+                        s_chapter_offsets[s_chapter_count] = item.offset;
+                        s_chapter_toc_pos[s_chapter_count] = line_start;
+                        s_chapter_count++;
                     }
-                    off = off * 10u + (uint32_t)(c - '0');
-                    k++;
                 }
-                if (ok && (s_reader_size == 0 || off < s_reader_size)) {
-                    memcpy(s_chapter_titles[s_chapter_count], buf + i, title_len);
-                    s_chapter_titles[s_chapter_count][title_len] = '\0';
-                    s_chapter_offsets[s_chapter_count] = off;
-                    s_chapter_count++;
-                }
+                line_len = 0;
+                line_over = false;
+                line_start = pos + k + 1;
+            } else if (line_len < (uint32_t)sizeof(s_toc_line) - 1) {
+                s_toc_line[line_len++] = c;
+            } else {
+                line_over = true;
             }
         }
-        i = (j < len) ? (j + 1) : len;
+        pos += got;
+    }
+}
+
+/**
+ * 读回某一章的标题（按需从 .toc 读那一行，标题不常驻内存）。
+ * 读不到就返回空串 —— 该章仍可跳转，只是没有名字。
+ */
+static void ui_toc_title_at(int idx, char *out, uint32_t cap)
+{
+    if (out == NULL || cap == 0) {
+        return;
+    }
+    out[0] = '\0';
+    if (idx < 0 || idx >= s_chapter_count || s_toc_path[0] == '\0') {
+        return;
+    }
+    uint32_t got = 0;
+    int rc = ui_data_read_range(s_toc_path, s_chapter_toc_pos[idx], s_toc_readbuf,
+                                (uint32_t)sizeof(s_toc_readbuf) - 1, &got);
+    if (rc < 0 || got == 0) {
+        return;
+    }
+    s_toc_readbuf[got] = '\0';
+    uint32_t len = 0;
+    while (len < got && s_toc_readbuf[len] != '\n') {
+        len++;
+    }
+    ui_data_toc_item_t item;
+    if (ui_data_parse_toc((const char *)s_toc_readbuf, len, s_reader_size, &item) == 1) {
+        snprintf(out, cap, "%s", item.title);
     }
 }
 
 /** 当前所在章节标题（没有目录则返回空串）。 */
 static const char *ui_current_chapter_title(void)
 {
-    const char *title = NULL;
-    int i;
-    for (i = 0; i < s_chapter_count; i++) {
+    if (s_chapter_count <= 0) {
+        return "";
+    }
+    int idx = -1;
+    for (int i = 0; i < s_chapter_count; i++) {
         if (s_chapter_offsets[i] <= s_reader_offset) {
-            title = s_chapter_titles[i];
+            idx = i;
         } else {
             break;
         }
     }
-    return (title != NULL) ? title : "";
+    if (idx < 0) {
+        return "";
+    }
+    if (idx != s_chapter_title_idx) {
+        ui_toc_title_at(idx, s_chapter_title, (uint32_t)sizeof(s_chapter_title));
+        s_chapter_title_idx = idx;
+    }
+    return s_chapter_title;
 }
 
 /** 渲染当前页 + 状态栏进度。 */
@@ -2576,6 +2651,364 @@ void ui_pages_reader_prev_page(void)
     s_reader_offset = target;
     ui_reader_render();
     ui_book_save_progress();   /* 翻页后自动保存进度 */
+}
+
+/* ===================== 阅读子页：菜单 / 章节目录 / 百分比定位（doc/07 §4.2 ③④⑤） =====================
+ *
+ * 三个子页共用一套结构：进页重建 → 手势改状态 → 再重建。
+ *   PAGE_BOOK_MENU  快捷菜单（目录 / 百分比定位 / 亮度 / 返回书架）
+ *   PAGE_BOOK_TOC   章节目录（8 章一页，左右翻页，短按跳章）
+ *   PAGE_BOOK_JUMP  百分比定位（左右 ±1%，上下 ±10%，短按确认跳转）
+ * 跳转落点一律走 ui_data_percent_to_offset() + UTF-8 首字节对齐（doc/07 §3.4）。
+ * ================================================================================== */
+
+/** 菜单页重建（doc/07 §4.2 ③）。 */
+static void ui_book_menu_render(void)
+{
+    lv_obj_t *content = ui_page_content_book(PAGE_BOOK_MENU);
+    if (content == NULL) {
+        return;
+    }
+    lv_obj_clean(content);
+
+    lv_obj_t *title = ui_make_label(content, "阅 读 功 能 菜 单", true);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
+
+    int i;
+    for (i = 0; i < s_menu_count; i++) {
+        char text[48];
+        switch (s_menu_actions[i]) {
+        case UI_BOOK_ACT_TOC:
+            snprintf(text, sizeof(text), "章节目录跳转");
+            break;
+        case UI_BOOK_ACT_JUMP:
+            snprintf(text, sizeof(text), "百分比进度定位");
+            break;
+        case UI_BOOK_ACT_BRIGHT:
+            snprintf(text, sizeof(text), "屏幕亮度: %d / 5 档",
+                     (int)hal_display_get_backlight());
+            break;
+        default:
+            snprintf(text, sizeof(text), "返回书架");
+            break;
+        }
+        char line[64];
+        snprintf(line, sizeof(line), "%s%s", (i == s_book_menu_sel) ? "> " : "  ", text);
+        lv_obj_t *row = ui_make_label(content, line, false);
+        lv_obj_align(row, LV_ALIGN_TOP_LEFT, 0, 56 + i * 40);
+    }
+}
+
+/** 把可能落在字符中间的偏移对齐到该字符的首字节（doc/07 §3.4）。 */
+static uint32_t ui_reader_seek_align(uint32_t offset)
+{
+    if (offset < 4u) {
+        return offset;
+    }
+    uint8_t buf[8];
+    uint32_t got = 0;
+    if (ui_data_read_range(s_reader_path, offset - 4u, buf, (uint32_t)sizeof(buf), &got) < 0 ||
+        got <= 4u) {
+        return offset;
+    }
+    uint32_t rel = ui_data_utf8_align_backward(buf, got, 4u);
+    return (offset - 4u) + rel;
+}
+
+/** 跳到正文的某个字节偏移：对齐 → 重画 → 存进度。返回新偏移，失败返回 -1。 */
+static int ui_reader_seek(uint32_t offset)
+{
+    if (s_reader_size == 0) {
+        return -1;
+    }
+    if (offset >= s_reader_size) {
+        offset = s_reader_size - 1;
+    }
+    uint32_t aligned = ui_reader_seek_align(offset);
+    if (aligned >= s_reader_size) {
+        aligned = s_reader_size - 1;
+    }
+    s_reader_offset = aligned;
+    s_reader_history_count = 0;   /* 跳走后旧页起点栈作废 */
+    s_reader_consumed = 0;
+    ui_reader_render();
+    ui_book_save_progress();
+    return (int)aligned;
+}
+
+/** 按页读回章节标题（标题不常驻内存，只留当前页 8 个）。 */
+static void ui_book_toc_load_page_titles(int page)
+{
+    memset(s_toc_titles, 0, sizeof(s_toc_titles));
+    int first = page * UI_TOC_PER_PAGE;
+    if (first >= s_chapter_count) {
+        s_toc_page_cached = page;
+        return;
+    }
+    /* 一次范围读回本页的整段行，再逐行判定 —— 避免每章一次读 */
+    uint32_t start = s_chapter_toc_pos[first];
+    uint32_t end = s_toc_size;
+    if (first + UI_TOC_PER_PAGE < s_chapter_count) {
+        end = s_chapter_toc_pos[first + UI_TOC_PER_PAGE];
+    }
+    uint32_t len = end - start;
+    if (len > (uint32_t)sizeof(s_toc_readbuf) - 1u) {
+        len = (uint32_t)sizeof(s_toc_readbuf) - 1u;
+    }
+    uint32_t got = 0;
+    if (ui_data_read_range(s_toc_path, start, s_toc_readbuf, len, &got) < 0 || got == 0) {
+        s_toc_page_cached = page;
+        return;
+    }
+    s_toc_readbuf[got] = '\0';
+    uint32_t i = 0;
+    int n = 0;
+    while (i < got && n < UI_TOC_PER_PAGE) {
+        uint32_t j = i;
+        while (j < got && s_toc_readbuf[j] != '\n') {
+            j++;
+        }
+        ui_data_toc_item_t item;
+        if (ui_data_parse_toc((const char *)&s_toc_readbuf[i], j - i, s_reader_size, &item) == 1) {
+            memcpy(s_toc_titles[n], item.title, sizeof(item.title));
+            n++;
+        }
+        i = (j < got) ? (j + 1u) : got;
+    }
+    s_toc_page_cached = page;
+}
+
+/** 目录页重建（doc/07 §4.2 ④）。 */
+static void ui_book_toc_render(void)
+{
+    lv_obj_t *content = ui_page_content_book(PAGE_BOOK_TOC);
+    if (content == NULL) {
+        return;
+    }
+    lv_obj_clean(content);
+
+    int pages = (s_chapter_count + UI_TOC_PER_PAGE - 1) / UI_TOC_PER_PAGE;
+    if (pages < 1) {
+        pages = 1;
+    }
+    if (s_book_toc_page >= pages) {
+        s_book_toc_page = pages - 1;
+    }
+    if (s_book_toc_page < 0) {
+        s_book_toc_page = 0;
+    }
+
+    char head[48];
+    snprintf(head, sizeof(head), "章节目录 (共 %d 章)", s_chapter_count);
+    lv_obj_t *title = ui_make_label(content, head, true);
+    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 0, 0);
+
+    char pagetxt[24];
+    snprintf(pagetxt, sizeof(pagetxt), "%d/%d 页", s_book_toc_page + 1, pages);
+    lv_obj_t *pg = ui_make_label(content, pagetxt, false);
+    lv_obj_align(pg, LV_ALIGN_TOP_RIGHT, 0, 0);
+
+    if (s_chapter_count == 0) {
+        lv_obj_t *empty = ui_make_label(content, "这本书没有章节", false);
+        lv_obj_align(empty, LV_ALIGN_TOP_LEFT, 0, 56);
+        return;
+    }
+
+    int first = s_book_toc_page * UI_TOC_PER_PAGE;
+    for (int i = 0; i < UI_TOC_PER_PAGE; i++) {
+        int idx = first + i;
+        if (idx >= s_chapter_count) {
+            break;
+        }
+        char line[64];
+        snprintf(line, sizeof(line), "%s%s", (idx == s_book_toc_sel) ? "> " : "  ",
+                 s_toc_titles[i]);
+        lv_obj_t *row = ui_make_label(content, line, false);
+        lv_obj_align(row, LV_ALIGN_TOP_LEFT, 0, 56 + i * 40);
+    }
+}
+
+/** 百分比定位页重建（doc/07 §4.2 ⑤）。 */
+static void ui_book_jump_render(void)
+{
+    lv_obj_t *content = ui_page_content_book(PAGE_BOOK_JUMP);
+    if (content == NULL) {
+        return;
+    }
+    lv_obj_clean(content);
+
+    lv_obj_t *title = ui_make_label(content, "进度定位跳转", true);
+    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 0, 0);
+
+    char pcttxt[32];
+    snprintf(pcttxt, sizeof(pcttxt), "目标阅读进度: %d%%", s_book_jump_pct);
+    lv_obj_t *pct = ui_make_label(content, pcttxt, false);
+    lv_obj_align(pct, LV_ALIGN_TOP_MID, 0, 90);
+
+    char bar[UI_JUMP_BLOCKS * 3 + 1];
+    int fill = (s_book_jump_pct * UI_JUMP_BLOCKS + 50) / 100;
+    for (int i = 0; i < UI_JUMP_BLOCKS; i++) {
+        memcpy(bar + i * 3, (i < fill) ? "█" : "░", 3);
+    }
+    bar[UI_JUMP_BLOCKS * 3] = '\0';
+    lv_obj_t *barlabel = ui_make_label(content, bar, false);
+    lv_obj_align(barlabel, LV_ALIGN_TOP_MID, 0, 130);
+
+    lv_obj_t *hint = ui_make_label(content, "提示: 左右推微调1%，上下推10%", false);
+    lv_obj_align(hint, LV_ALIGN_TOP_MID, 0, 175);
+    lv_obj_t *hint2 = ui_make_label(content, "短按确认跳转", false);
+    lv_obj_align(hint2, LV_ALIGN_TOP_MID, 0, 200);
+}
+
+/* ---------- 三个子页的公开操作（ui_router 依此分发手势） ---------- */
+
+void ui_pages_book_menu_enter(void)
+{
+    s_book_menu_sel = 0;
+    s_menu_count = 0;
+    if (s_chapter_count > 0) {
+        s_menu_actions[s_menu_count++] = UI_BOOK_ACT_TOC;
+    }
+    s_menu_actions[s_menu_count++] = UI_BOOK_ACT_JUMP;
+    s_menu_actions[s_menu_count++] = UI_BOOK_ACT_BRIGHT;
+    s_menu_actions[s_menu_count++] = UI_BOOK_ACT_BACK;
+    ui_book_menu_render();
+}
+
+int ui_pages_book_menu_move(int delta)
+{
+    if (s_menu_count <= 0) {
+        return 0;
+    }
+    int next = s_book_menu_sel + delta;
+    if (next < 0) {
+        next = s_menu_count - 1;
+    }
+    if (next >= s_menu_count) {
+        next = 0;
+    }
+    s_book_menu_sel = next;
+    ui_book_menu_render();
+    return next;
+}
+
+int ui_pages_book_menu_select(void)
+{
+    if (s_book_menu_sel < 0 || s_book_menu_sel >= s_menu_count) {
+        return UI_BOOK_ACT_BACK;
+    }
+    return s_menu_actions[s_book_menu_sel];
+}
+
+void ui_pages_book_menu_refresh(void)
+{
+    ui_book_menu_render();
+}
+
+void ui_pages_book_toc_enter(void)
+{
+    s_book_toc_sel = 0;
+    s_book_toc_page = 0;
+    ui_book_toc_load_page_titles(0);
+    ui_book_toc_render();
+}
+
+int ui_pages_book_toc_move(int delta)
+{
+    if (s_chapter_count <= 0) {
+        return -1;
+    }
+    int sel = s_book_toc_sel + delta;
+    if (sel < 0) {
+        sel = 0;
+    }
+    if (sel > s_chapter_count - 1) {
+        sel = s_chapter_count - 1;
+    }
+    s_book_toc_sel = sel;
+    int page = sel / UI_TOC_PER_PAGE;
+    if (page != s_book_toc_page) {
+        s_book_toc_page = page;
+        ui_book_toc_load_page_titles(page);
+    }
+    ui_book_toc_render();
+    return sel;
+}
+
+int ui_pages_book_toc_page(int delta)
+{
+    int pages = (s_chapter_count + UI_TOC_PER_PAGE - 1) / UI_TOC_PER_PAGE;
+    if (pages < 1) {
+        pages = 1;
+    }
+    int page = s_book_toc_page + delta;
+    if (page < 0) {
+        page = 0;
+    }
+    if (page > pages - 1) {
+        page = pages - 1;
+    }
+    s_book_toc_page = page;
+    int first = page * UI_TOC_PER_PAGE;
+    int last = first + UI_TOC_PER_PAGE - 1;
+    if (last > s_chapter_count - 1) {
+        last = s_chapter_count - 1;
+    }
+    if (s_book_toc_sel < first) {
+        s_book_toc_sel = first;
+    }
+    if (s_book_toc_sel > last) {
+        s_book_toc_sel = last;
+    }
+    /* 换页 → 重新读回这一页的标题 */
+    if (page != s_toc_page_cached) {
+        ui_book_toc_load_page_titles(page);
+    }
+    ui_book_toc_render();
+    return page;
+}
+
+int ui_pages_book_toc_select(void)
+{
+    if (s_book_toc_sel < 0 || s_book_toc_sel >= s_chapter_count) {
+        return -1;
+    }
+    return ui_reader_seek(s_chapter_offsets[s_book_toc_sel]);
+}
+
+void ui_pages_book_jump_enter(void)
+{
+    int pct = ui_book_progress_percent(s_reader_offset, s_reader_size);
+    if (pct < 0) {
+        pct = 0;
+    }
+    if (pct > 100) {
+        pct = 100;
+    }
+    s_book_jump_pct = pct;
+    ui_book_jump_render();
+}
+
+void ui_pages_book_jump_adjust(int delta)
+{
+    int pct = s_book_jump_pct + delta;
+    if (pct < 0) {
+        pct = 0;
+    }
+    if (pct > 100) {
+        pct = 100;
+    }
+    s_book_jump_pct = pct;
+    ui_book_jump_render();
+}
+
+int ui_pages_book_jump_select(void)
+{
+    if (s_reader_size == 0) {
+        return -1;
+    }
+    uint32_t raw = ui_data_percent_to_offset(s_reader_size, (uint32_t)s_book_jump_pct);
+    return ui_reader_seek(raw);
 }
 
 /* ===================== 状态栏 ===================== */

@@ -206,6 +206,38 @@ const char *ui_pages_current_card_id(void);
 /** 显示第 index 张卡（show_answer = true 显示背面）。 */
 void ui_pages_show_card(int index, bool show_answer);
 
+/* ---------- 阅读子页：菜单 / 章节目录 / 百分比定位（doc/07 §4.2 ③④⑤） ---------- */
+/** 菜单项动作码（ui_router 依此跳转）。 */
+#define UI_BOOK_ACT_TOC      0   /* 章节目录跳转 */
+#define UI_BOOK_ACT_JUMP     1   /* 百分比进度定位 */
+#define UI_BOOK_ACT_BRIGHT   2   /* 屏幕亮度 */
+#define UI_BOOK_ACT_BACK     3   /* 返回书架 */
+
+/** 进入阅读菜单页：重建条目，光标复位。 */
+void ui_pages_book_menu_enter(void);
+/** 菜单光标上下移动（-1 上 / +1 下），返回移动后的光标位置。 */
+int  ui_pages_book_menu_move(int delta);
+/** 当前光标指向的菜单动作码（UI_BOOK_ACT_*）。 */
+int  ui_pages_book_menu_select(void);
+/** 菜单内容重画（亮度变了之后刷新显示）。 */
+void ui_pages_book_menu_refresh(void);
+
+/** 进入章节目录页：重建条目，光标复位。 */
+void ui_pages_book_toc_enter(void);
+/** 目录光标上下移动（-1 上 / +1 下），返回选中的章节序号。 */
+int  ui_pages_book_toc_move(int delta);
+/** 目录左右翻页（-1 上一页 / +1 下一页），返回页号。 */
+int  ui_pages_book_toc_page(int delta);
+/** 跳到当前选中的章节。返回新的正文偏移，失败返回 -1。 */
+int  ui_pages_book_toc_select(void);
+
+/** 进入百分比定位页：目标初值 = 当前阅读进度。 */
+void ui_pages_book_jump_enter(void);
+/** 目标百分比微调（delta = ±1 或 ±10）。 */
+void ui_pages_book_jump_adjust(int delta);
+/** 跳到目标百分比。返回新的正文偏移，失败返回 -1。 */
+int  ui_pages_book_jump_select(void);
+
 /* ---------- 设备接入状态（自动登记，doc/04 §1.2） ---------- */
 /**
  * 刷新 OOBE 页的接入进度文案。

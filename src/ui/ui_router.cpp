@@ -393,6 +393,12 @@ void ui_router_go_book(ui_book_page_t page)
     if (page == PAGE_BOOKSHELF) {
         /* 书架内容来自 TF 卡，进页时重新读一遍 */
         ui_pages_refresh_bookshelf();
+    } else if (page == PAGE_BOOK_MENU) {
+        ui_pages_book_menu_enter();
+    } else if (page == PAGE_BOOK_TOC) {
+        ui_pages_book_toc_enter();
+    } else if (page == PAGE_BOOK_JUMP) {
+        ui_pages_book_jump_enter();
     }
 }
 
@@ -727,6 +733,12 @@ static void ui_book_gesture(ui_gesture_t gesture)
             ui_pages_bookshelf_move(-1);
         } else if (s_current_book == PAGE_READER) {
             ui_brightness(-1);
+        } else if (s_current_book == PAGE_BOOK_MENU) {
+            ui_pages_book_menu_move(-1);
+        } else if (s_current_book == PAGE_BOOK_TOC) {
+            ui_pages_book_toc_move(-1);
+        } else if (s_current_book == PAGE_BOOK_JUMP) {
+            ui_pages_book_jump_adjust(10);
         }
         break;
     case GESTURE_DOWN:
@@ -734,16 +746,40 @@ static void ui_book_gesture(ui_gesture_t gesture)
             ui_pages_bookshelf_move(1);
         } else if (s_current_book == PAGE_READER) {
             ui_brightness(1);
+        } else if (s_current_book == PAGE_BOOK_MENU) {
+            ui_pages_book_menu_move(1);
+        } else if (s_current_book == PAGE_BOOK_TOC) {
+            ui_pages_book_toc_move(1);
+        } else if (s_current_book == PAGE_BOOK_JUMP) {
+            ui_pages_book_jump_adjust(-10);
         }
         break;
     case GESTURE_LEFT:
         if (s_current_book == PAGE_READER) {
             ui_pages_reader_prev_page();
+        } else if (s_current_book == PAGE_BOOK_MENU) {
+            if (ui_pages_book_menu_select() == UI_BOOK_ACT_BRIGHT) {
+                ui_brightness(-1);
+                ui_pages_book_menu_refresh();
+            }
+        } else if (s_current_book == PAGE_BOOK_TOC) {
+            ui_pages_book_toc_page(-1);
+        } else if (s_current_book == PAGE_BOOK_JUMP) {
+            ui_pages_book_jump_adjust(-1);
         }
         break;
     case GESTURE_RIGHT:
         if (s_current_book == PAGE_READER) {
             ui_pages_reader_next_page();
+        } else if (s_current_book == PAGE_BOOK_MENU) {
+            if (ui_pages_book_menu_select() == UI_BOOK_ACT_BRIGHT) {
+                ui_brightness(1);
+                ui_pages_book_menu_refresh();
+            }
+        } else if (s_current_book == PAGE_BOOK_TOC) {
+            ui_pages_book_toc_page(1);
+        } else if (s_current_book == PAGE_BOOK_JUMP) {
+            ui_pages_book_jump_adjust(1);
         }
         break;
     case GESTURE_CLICK:
@@ -760,6 +796,26 @@ static void ui_book_gesture(ui_gesture_t gesture)
             }
         } else if (s_current_book == PAGE_READER) {
             ui_router_go_book(PAGE_BOOK_MENU);
+        } else if (s_current_book == PAGE_BOOK_MENU) {
+            int act = ui_pages_book_menu_select();
+            if (act == UI_BOOK_ACT_TOC) {
+                ui_router_go_book(PAGE_BOOK_TOC);
+            } else if (act == UI_BOOK_ACT_JUMP) {
+                ui_router_go_book(PAGE_BOOK_JUMP);
+            } else if (act == UI_BOOK_ACT_BRIGHT) {
+                ui_toast("用左右键调节亮度");
+            } else {
+                ui_pages_reader_leave();
+                ui_router_go_book(PAGE_BOOKSHELF);
+            }
+        } else if (s_current_book == PAGE_BOOK_TOC) {
+            if (ui_pages_book_toc_select() >= 0) {
+                ui_router_go_book(PAGE_READER);
+            }
+        } else if (s_current_book == PAGE_BOOK_JUMP) {
+            if (ui_pages_book_jump_select() >= 0) {
+                ui_router_go_book(PAGE_READER);
+            }
         }
         break;
     case GESTURE_LONG:
