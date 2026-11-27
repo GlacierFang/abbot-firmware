@@ -25,6 +25,7 @@
 #include "ui_data.h"
 #include "ui_ota_page.h"
 #include "ui_weather.h"
+#include "ui_wifi_bg.h"
 #include "wifi_model.h"
 
 /* ===================== 颜色（中性骨架，落地前按 doc/03 §一 核对） ===================== */
@@ -419,36 +420,58 @@ static lv_obj_t *ui_make_list_item(lv_obj_t *parent, const char *text, const cha
 
 /* 0. 首次开机引导 (PAGE_OOBE)
  *
- * 改版后的 OOBE 不再要求家长敲配对码：设备联网后自己向学习助手报到，
- * 这一页只展示**接入进度**（doc/04 §1.2）。
- * 页面上的文字由 `ui_pages_set_pair_state()` 刷新，UI 不自己计时、不发网络请求。
+ * 首屏 = **品牌区**（设计稿整屏底图，见 src/ui/wifi_bg.c）+ 下方两个选项：
+ *   - 「连接 Wi-Fi 网络」→ PAGE_WIFI_SCAN
+ *   - 「重新尝试接入」→ 留在首屏，重新发起接入
+ *
+ * 品牌区按设计稿原样呈现（不重画标题、不改文案），这一层只负责交互。
+ * 接入进度由 `ui_pages_set_pair_state()` 刷新，UI 不自己计时、不发网络请求。
  */
-static void ui_build_oobe(lv_obj_t *content)
+
+/* 首屏品牌区底图：设计稿整屏 320x480，按 LVGL 原生 16 位色内存布局存放。
+ * LVGL 的 lv_img_dsc_t 要求 header.cf = LV_IMG_CF_TRUE_COLOR、data_size = w*h*2。 */
+static lv_img_dsc_t s_oobe_bg_dsc;
+
+static void ui_oobe_bg_init(void)
 {
-    lv_obj_t *title = ui_make_label(content, "欢迎使用 · 随身学习终端", true);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
-
-    lv_obj_t *card = ui_make_card(content);
-    lv_obj_align(card, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_t *state = ui_make_label(card, "正在准备中…", false);
-    lv_obj_align(state, LV_ALIGN_TOP_LEFT, 0, 0);
-    s_oobe_state_label = state;
-
-    lv_obj_t *body = ui_make_label(content,
-        "正在为你连接学习助手，\n不用输入任何东西，等一会儿就好。", false);
-    lv_obj_align(body, LV_ALIGN_TOP_LEFT, 0, 112);
-
-    lv_obj_t *item1 = ui_make_list_item(content, "> [ 连接 Wi-Fi 网络 ]", NULL);
-    lv_obj_align(item1, LV_ALIGN_TOP_LEFT, 0, 200);
-
-    lv_obj_t *item2 = ui_make_list_item(content, "  [ 重新尝试接入 ]", NULL);
-    lv_obj_align(item2, LV_ALIGN_TOP_LEFT, 0, 240);
-
-    lv_obj_t *item3 = ui_make_list_item(content, "  [ 先离线体验 ]", NULL);
-    lv_obj_align(item3, LV_ALIGN_TOP_LEFT, 0, 280);
+    s_oobe_bg_dsc.header.cf = LV_IMG_CF_TRUE_COLOR;
+    s_oobe_bg_dsc.header.w = UI_WIFI_BG_WIDTH;
+    s_oobe_bg_dsc.header.h = UI_WIFI_BG_HEIGHT;
+    s_oobe_bg_dsc.data_size = UI_WIFI_BG_PIXELS * 2;
+    /* 数组是 const uint16_t；这里按字节视图交给 LVGL（两种 const 声明都能编译）。 */
+    s_oobe_bg_dsc.data = (uint8_t *)(uintptr_t)ui_wifi_bg;
 }
 
-/** 按接入状态刷新 OOBE 进度文案（文案温和，不出现任何技术术语）。 */
+static void ui_build_oobe(lv_obj_t *content)
+{
+    lv_obj_t *root = lv_obj_get_parent(content);
+
+    /* 品牌区 = 设计稿整屏底图 (320x480), 作为 img 部件铺满整页并压到最底层。
+     * 走 lv_img_set_src + 变量图源 (LV_IMG_CF_TRUE_COLOR) ——
+     * LVGL 会按屏幕自身的 lv_color_t 布局读像素, 颜色与 UI 其它元素一致。 */
+    lv_obj_t *bg = lv_img_create(root);
+    lv_img_set_src(bg, &s_oobe_bg_dsc);
+    lv_obj_set_pos(bg, 0, 0);
+    lv_obj_move_to_index(bg, 0);
+
+    /* 状态条 / 内容层 / 提示条都让位给品牌区 (透明, 底图透出来)。 */
+    lv_obj_set_style_bg_opa(s_pages[PAGE_OOBE].status, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_opa(content, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_opa(s_pages[PAGE_OOBE].hint, LV_OPA_TRANSP, 0);
+
+    /* 状态行：等待连接网络 → 接入中… → 已接入
+     * （字库里没有 ● / ✓，用字库已有的 · 代替） */
+    s_oobe_state_label = ui_make_label(content, "等待连接网络", false);
+    lv_obj_set_pos(s_oobe_state_label, 8, 268);
+
+    lv_obj_t *item1 = ui_make_list_item(content, "> [ 连接 Wi-Fi 网络 ]", NULL);
+    lv_obj_set_pos(item1, 8, 304);
+
+    lv_obj_t *item2 = ui_make_list_item(content, "  [ 重新尝试接入 ]", NULL);
+    lv_obj_set_pos(item2, 8, 344);
+}
+
+/** 按接入状态刷新 OOBE 状态行（文案温和，不出现任何技术术语）。 */
 void ui_pages_set_pair_state(int state)
 {
     if (s_oobe_state_label == NULL) {
@@ -457,16 +480,16 @@ void ui_pages_set_pair_state(int state)
     const char *text;
     switch (state) {
     case UI_PAIR_STATE_PENDING:
-        text = "正在接入学习助手…";
+        text = "· 接入中…";
         break;
     case UI_PAIR_STATE_READY:
-        text = "已经接上啦，可以开始学习了";
+        text = "· 已接入";
         break;
     case UI_PAIR_STATE_FAILED:
-        text = "暂时没接上，会自动再试一次";
+        text = "· 暂时没接上，会自动再试一次";
         break;
     default:
-        text = "正在准备中…";
+        text = "等待连接网络";
         break;
     }
     lv_label_set_text(s_oobe_state_label, text);
@@ -753,6 +776,8 @@ static wifi_conn_state_t s_wifi_conn;
 static uint32_t s_wifi_result_seq = 0;     /* 已看过的连接结果序号 */
 static uint32_t s_wifi_seen_scan_seq = 0;   /* 已看过的扫描结果序号 */
 static char s_wifi_line[UI_ITEM_TEXT_MAX + 4];
+static char s_wifi_pending_ssid[33];    /* 正在连接的目标 */
+static char s_wifi_connected_ssid[33];  /* 已经连上的那个 */
 
 /** 建一行「不登记进通用光标」的可选行（Wi-Fi 页与键盘页各自管光标）。 */
 static lv_obj_t *ui_make_row(lv_obj_t *parent, lv_obj_t **out_label)
@@ -805,10 +830,15 @@ static void ui_wifi_render_rows(void)
             lv_label_set_text(s_wifi_row_label[i], "");
             continue;
         }
-        wifi_model_format_ap(buf, sizeof(buf), &s_wifi_aps[idx]);
+        int connected = (s_wifi_connected_ssid[0] != '\0' &&
+                         strcmp(s_wifi_aps[idx].ssid, s_wifi_connected_ssid) == 0);
+        wifi_model_format_row(buf, sizeof(buf), &s_wifi_aps[idx], connected);
         snprintf(s_wifi_line, sizeof(s_wifi_line), "%s%s",
                  (idx == s_wifi_cursor) ? "> " : "  ", buf);
         lv_label_set_text(s_wifi_row_label[i], s_wifi_line);
+        /* 选中态：光标所在行高亮，其余保持常规文字色 */
+        lv_obj_set_style_text_color(s_wifi_row_label[i],
+                                    (idx == s_wifi_cursor) ? UI_C_ACCENT : UI_C_TEXT, 0);
     }
     snprintf(s_wifi_line, sizeof(s_wifi_line), "%s[ 重新扫描周边热点 ]",
              (s_wifi_cursor == s_wifi_ap_count) ? "> " : "  ");
@@ -903,7 +933,10 @@ void ui_pages_wifi_scan_tick(uint32_t now_ms)
             bool ok = (net_wifi_connect_result() == 1);
             wifi_conn_connect_finish(&s_wifi_conn, ok);
             if (ok) {
-                /* 连上了：刷新列表把刚连的网络标成「已保存」 */
+                /* 连上了：记住是哪个，后面列表里给它标「已连」 */
+                snprintf(s_wifi_connected_ssid, sizeof(s_wifi_connected_ssid), "%s",
+                         s_wifi_pending_ssid);
+                /* 再刷新列表把刚连的网络标成「已保存」 */
                 char saved[33];
                 if (net_wifi_get_saved_ssid(saved, sizeof(saved))) {
                     wifi_model_mark_saved(s_wifi_aps, s_wifi_ap_count, saved);
@@ -945,6 +978,7 @@ void ui_pages_wifi_scan_connect(const char *ssid, const char *password, uint32_t
         return;
     }
     wifi_conn_connect_start(&s_wifi_conn, ssid, now_ms);
+    snprintf(s_wifi_pending_ssid, sizeof(s_wifi_pending_ssid), "%s", ssid);
     s_wifi_result_seq = net_wifi_connect_result_seq();
     net_wifi_submit_connect(ssid, password ? password : "");  /* 密码只进内存，不进日志 */
     ui_wifi_render_status();
@@ -999,38 +1033,60 @@ typedef enum {
     K_MASK,      /* 显 / 隐 */
     K_CLEAR,     /* 清除 */
     K_OK,        /* 确认 */
+    K_LAYER,     /* 字母层 <-> 数字符号层 */
 } keypad_key_act_t;
 
 typedef struct {
     const char *label;        /* 功能键的显示文字（普通字符键为 NULL） */
-    char ch;                  /* 普通字符键的字符（小写） */
+    char ch;                  /* 普通字符键的字符（字母层为小写） */
     keypad_key_act_t act;
 } keypad_key_t;
 
-static const keypad_key_t s_key_rows[KEY_ROWS][KEY_COLS] = {
-    { { NULL, '1', K_CHAR }, { NULL, '2', K_CHAR }, { NULL, '3', K_CHAR },
-      { NULL, '4', K_CHAR }, { NULL, '5', K_CHAR }, { NULL, '6', K_CHAR },
-      { NULL, '7', K_CHAR }, { NULL, '8', K_CHAR }, { NULL, '9', K_CHAR },
-      { NULL, '0', K_CHAR } },
+/* 字母层: 三排字母 + 三排功能键 */
+static const keypad_key_t s_key_rows_alpha[KEY_ROWS][KEY_COLS] = {
     { { NULL, 'q', K_CHAR }, { NULL, 'w', K_CHAR }, { NULL, 'e', K_CHAR },
       { NULL, 'r', K_CHAR }, { NULL, 't', K_CHAR }, { NULL, 'y', K_CHAR },
       { NULL, 'u', K_CHAR }, { NULL, 'i', K_CHAR }, { NULL, 'o', K_CHAR },
       { NULL, 'p', K_CHAR } },
     { { NULL, 'a', K_CHAR }, { NULL, 's', K_CHAR }, { NULL, 'd', K_CHAR },
       { NULL, 'f', K_CHAR }, { NULL, 'g', K_CHAR }, { NULL, 'h', K_CHAR },
-      { NULL, 'j', K_CHAR }, { NULL, 'k', K_CHAR }, { NULL, 'l', K_CHAR } },
+      { NULL, 'j', K_CHAR }, { NULL, 'k', K_CHAR }, { NULL, 'l', K_CHAR },
+      { NULL, '-', K_CHAR } },
     { { NULL, 'z', K_CHAR }, { NULL, 'x', K_CHAR }, { NULL, 'c', K_CHAR },
       { NULL, 'v', K_CHAR }, { NULL, 'b', K_CHAR }, { NULL, 'n', K_CHAR },
       { NULL, 'm', K_CHAR }, { NULL, ',', K_CHAR }, { NULL, '.', K_CHAR },
-      { NULL, '-', K_CHAR } },
-    { { "大小写", 0, K_SHIFT }, { "空格", 0, K_SPACE }, { "退格", 0, K_BACK },
-      { "左移", 0, K_LEFT }, { "右移", 0, K_RIGHT } },
-    { { "显/隐", 0, K_MASK }, { "清除", 0, K_CLEAR }, { "确认并连接", 0, K_OK } },
+      { NULL, '/', K_CHAR } },
+    { { "123", 0, K_LAYER }, { "空格", 0, K_SPACE },
+      { "大小写", 0, K_SHIFT }, { "退格", 0, K_BACK } },
+    { { "左移", 0, K_LEFT }, { "右移", 0, K_RIGHT },
+      { "显/隐", 0, K_MASK }, { "清除", 0, K_CLEAR } },
+    { { "确认并连接", 0, K_OK } },
 };
 
-/* 每行的键数与格宽（合计不超过 300px 内容宽度） */
-static const uint8_t s_key_count[KEY_ROWS] = { 10, 10, 9, 10, 5, 3 };
-static const uint16_t s_key_w[KEY_ROWS] = { 30, 30, 33, 30, 60, 100 };
+/* 数字符号层: 数字 + 常用符号（密码里要用） */
+static const keypad_key_t s_key_rows_sym[KEY_ROWS][KEY_COLS] = {
+    { { NULL, '1', K_CHAR }, { NULL, '2', K_CHAR }, { NULL, '3', K_CHAR },
+      { NULL, '4', K_CHAR }, { NULL, '5', K_CHAR }, { NULL, '6', K_CHAR },
+      { NULL, '7', K_CHAR }, { NULL, '8', K_CHAR }, { NULL, '9', K_CHAR },
+      { NULL, '0', K_CHAR } },
+    { { NULL, '!', K_CHAR }, { NULL, '@', K_CHAR }, { NULL, '#', K_CHAR },
+      { NULL, '$', K_CHAR }, { NULL, '%', K_CHAR }, { NULL, '^', K_CHAR },
+      { NULL, '&', K_CHAR }, { NULL, '*', K_CHAR }, { NULL, '(', K_CHAR },
+      { NULL, ')', K_CHAR } },
+    { { NULL, '-', K_CHAR }, { NULL, '_', K_CHAR }, { NULL, '+', K_CHAR },
+      { NULL, '=', K_CHAR }, { NULL, '[', K_CHAR }, { NULL, ']', K_CHAR },
+      { NULL, '{', K_CHAR }, { NULL, '}', K_CHAR }, { NULL, ';', K_CHAR },
+      { NULL, ':', K_CHAR } },
+    { { "ABC", 0, K_LAYER }, { "空格", 0, K_SPACE },
+      { "大小写", 0, K_SHIFT }, { "退格", 0, K_BACK } },
+    { { "左移", 0, K_LEFT }, { "右移", 0, K_RIGHT },
+      { "显/隐", 0, K_MASK }, { "清除", 0, K_CLEAR } },
+    { { "确认并连接", 0, K_OK } },
+};
+
+/* 每行的键数与格宽（合计不超过 300px 内容宽度；两层几何一致，便于原地换层） */
+static const uint8_t s_key_count[KEY_ROWS] = { 10, 10, 10, 4, 4, 1 };
+static const uint16_t s_key_w[KEY_ROWS] = { 30, 30, 30, 75, 75, 300 };
 
 static lv_obj_t *s_key_obj[KEY_ROWS][KEY_COLS];
 static lv_obj_t *s_key_label[KEY_ROWS][KEY_COLS];
@@ -1039,6 +1095,7 @@ static lv_obj_t *s_key_input_label = NULL;
 static keypad_editor_t s_keypad;
 static int s_key_row = 0;
 static int s_key_col = 0;
+static int s_key_layer = 0;   /* 0 = 字母层, 1 = 数字符号层 */
 static bool s_key_confirmed = false;
 static uint32_t s_key_last_ms = 0;
 static char s_key_input_line[KEYPAD_MAX_TEXT + 16];
@@ -1068,17 +1125,24 @@ static void ui_keyboard_render_input(void)
 
 static void ui_keyboard_render_keys(void)
 {
+    const keypad_key_t (*rows)[KEY_COLS] = (s_key_layer == 0)
+        ? s_key_rows_alpha : s_key_rows_sym;
     int r, c;
     for (r = 0; r < KEY_ROWS; r++) {
         for (c = 0; c < s_key_count[r]; c++) {
             if (s_key_label[r][c] == NULL) {
                 continue;
             }
-            const keypad_key_t *k = &s_key_rows[r][c];
+            const keypad_key_t *k = &rows[r][c];
             char buf[32];
             if (k->act == K_CHAR) {
                 buf[0] = keypad_editor_key_char(&s_keypad, k->ch);
                 buf[1] = '\0';
+            } else if (k->act == K_LAYER) {
+                /* 换层键的标签指向「切过去的那一层」 */
+                snprintf(buf, sizeof(buf), "%s", (s_key_layer == 0) ? "123" : "ABC");
+            } else if (k->act == K_SHIFT) {
+                snprintf(buf, sizeof(buf), "%s", s_keypad.shift ? "大写" : "大小写");
             } else {
                 snprintf(buf, sizeof(buf), "%s", k->label);
             }
@@ -1128,6 +1192,7 @@ void ui_pages_keyboard_enter(const char *title, bool masked, uint32_t now_ms)
     keypad_editor_set_mask(&s_keypad, masked);
     s_key_row = 0;
     s_key_col = 0;
+    s_key_layer = 0;   /* 默认字母层 */
     s_key_confirmed = false;
     s_key_last_ms = now_ms;
     snprintf(s_key_target, sizeof(s_key_target), "%s",
@@ -1173,10 +1238,22 @@ void ui_pages_keyboard_move(int dx, int dy, uint32_t now_ms)
 void ui_pages_keyboard_action(uint32_t now_ms)
 {
     s_key_last_ms = now_ms;
-    const keypad_key_t *k = &s_key_rows[s_key_row][s_key_col];
+    const keypad_key_t (*rows)[KEY_COLS] = (s_key_layer == 0)
+        ? s_key_rows_alpha : s_key_rows_sym;
+    const keypad_key_t *k = &rows[s_key_row][s_key_col];
     switch (k->act) {
     case K_CHAR:
-        keypad_editor_type_key(&s_keypad, k->ch);
+        if (s_key_layer == 0) {
+            /* 字母层走编辑器的字符映射（大小写粘滞在这里收尾） */
+            keypad_editor_type_key(&s_keypad, k->ch);
+        } else {
+            /* 数字符号层：符号原样写入，不受大小写影响 */
+            keypad_editor_insert(&s_keypad, k->ch);
+        }
+        break;
+    case K_LAYER:
+        s_key_layer = (s_key_layer == 0) ? 1 : 0;
+        keypad_editor_set_shift(&s_keypad, false);
         break;
     case K_SHIFT:
         keypad_editor_toggle_shift(&s_keypad);
@@ -1775,6 +1852,7 @@ static void ui_build_overlays(lv_obj_t *parent)
 void ui_pages_init(lv_obj_t *parent)
 {
     ui_styles_init();
+    ui_oobe_bg_init();
     ui_build_overlays(parent);
 
     int i;

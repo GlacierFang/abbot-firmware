@@ -215,12 +215,60 @@ static void test_hint_is_user_friendly(void)
     CHECK(strstr(wifi_conn_hint(&st), "已连上") != NULL);
 }
 
+/* 列表行文案（设计稿口径）—— 信号格 / SSID 截断 / 锁标 / 已连已存 */
+static void test_format_row(void)
+{
+    struct WifiApInfo ap;
+    char out[128];
+
+    memset(&ap, 0, sizeof(ap));
+    snprintf(ap.ssid, sizeof(ap.ssid), "%s", "Home_WiFi_5G");
+    ap.rssi = -40;                 /* 强 */
+    ap.is_encrypted = true;
+    ap.is_saved = false;
+
+    wifi_model_format_row(out, sizeof(out), &ap, 0);
+    CHECK(strstr(out, "Home_WiFi_5G") != NULL);
+    CHECK(strstr(out, "锁") != NULL);       /* 加密网络标锁 */
+    CHECK(strstr(out, "已存") == NULL);     /* 未保存且未连接 */
+
+    wifi_model_format_row(out, sizeof(out), &ap, 1);
+    CHECK(strstr(out, "已连") != NULL);     /* 已连接 */
+
+    /* 弱信号：实心格变少 */
+    ap.rssi = -85;
+    wifi_model_format_row(out, sizeof(out), &ap, 0);
+    CHECK(strstr(out, "█") != NULL);
+
+    /* SSID 超长（ASCII）：截断到 15 字节 + 省略号 */
+    memset(ap.ssid, 0, sizeof(ap.ssid));
+    memset(ap.ssid, 'A', 30);
+    ap.ssid[30] = '\0';
+    ap.rssi = -40;
+    wifi_model_format_row(out, sizeof(out), &ap, 0);
+    CHECK(strstr(out, "…") != NULL);
+    CHECK(strstr(out, "AAAAAAAAAAAAAAA…") != NULL);
+    CHECK(strstr(out, "AAAAAAAAAAAAAAAA") == NULL);
+
+    /* SSID 超长（UTF-8）：截断后不能劈开一个汉字 */
+    memset(ap.ssid, 0, sizeof(ap.ssid));
+    for (int i = 0; i < 10; i++) {
+        memcpy(ap.ssid + i * 3, "一", 3);
+    }
+    ap.ssid[30] = '\0';
+    wifi_model_format_row(out, sizeof(out), &ap, 0);
+    CHECK(strstr(out, "…") != NULL);
+    CHECK(strstr(out, "一一一一一…") != NULL);
+    CHECK(strstr(out, "一一一一一一") == NULL);
+}
+
 int main(void)
 {
     test_signal_level();
     test_sort_and_dedupe();
     test_mark_saved();
     test_format();
+    test_format_row();
     test_conn_state_machine();
     test_hint_is_user_friendly();
 

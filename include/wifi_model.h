@@ -109,6 +109,18 @@ bool wifi_conn_can_retry(const wifi_conn_state_t *st);
 /** 当前阶段给用户看的提示文案（温和中文，不含技术术语）。 */
 const char *wifi_conn_hint(const wifi_conn_state_t *st);
 
+/* ===================== 列表行文案（设计稿口径） ===================== */
+
+/**
+ * 生成一行「Wi-Fi 列表行」文案 —— 页面上真正显示的样子：
+ *   - 信号格：4 格，强度越强实心格越多，弱格留空；
+ *   - SSID  ：过长截断（不劈开 UTF-8 字符），末尾加省略号；
+ *   - 锁标  ：加密网络末尾加「锁」；
+ *   - 标记  ：connected 为真加「已连」，否则已保存的加「已存」。
+ * 例："██  Home_WiFi_5G 锁 已连"。
+ */
+void wifi_model_format_row(char *out, size_t cap, const WifiApInfo *ap, int connected);
+
 #ifdef __cplusplus
 }
 #endif

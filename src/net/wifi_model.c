@@ -109,6 +109,67 @@ void wifi_model_format_ap(char *out, size_t cap, const WifiApInfo *ap)
     }
 }
 
+/* ===================== 列表行文案（设计稿口径） ===================== */
+
+#define WIFI_ROW_BARS       4   /* 信号格数 */
+#define WIFI_ROW_SSID_MAX  18   /* SSID 最多显示的字节数, 超出截断加省略号 */
+
+/** SSID 截断: 按字节截, 但不把一个 UTF-8 字符劈成两半。 */
+static void wifi_row_cut_ssid(char *out, size_t cap, const char *ssid)
+{
+    size_t len = strlen(ssid);
+    if (len <= WIFI_ROW_SSID_MAX) {
+        snprintf(out, cap, "%s", ssid);
+        return;
+    }
+    size_t keep = (size_t)WIFI_ROW_SSID_MAX - 3;   /* 给 "…" 留位置 */
+    while (keep > 0 && (((unsigned char)ssid[keep] & 0xC0U) == 0x80U)) {
+        keep--;   /* 落在 UTF-8 续字节上, 往前退一格 */
+    }
+    snprintf(out, cap, "%.*s…", (int)keep, ssid);
+}
+
+void wifi_model_format_row(char *out, size_t cap, const WifiApInfo *ap, int connected)
+{
+    if (out == NULL || cap == 0) {
+        return;
+    }
+    if (ap == NULL) {
+        out[0] = '\0';
+        return;
+    }
+
+    /* 信号格: 实心 █ 表示有信号, 浅底 ░ 表示这格没信号。
+     * 字库里确定存在这两个字形 (tools/font_charset.txt)。 */
+    char bars[WIFI_ROW_BARS * 3 + 1];
+    int level = wifi_model_signal_level(ap->rssi);
+    int filled = level + 1;
+    if (filled < 1) {
+        filled = 1;
+    }
+    if (filled > WIFI_ROW_BARS) {
+        filled = WIFI_ROW_BARS;
+    }
+    int i;
+    for (i = 0; i < WIFI_ROW_BARS; i++) {
+        if (i < filled) {
+            memcpy(bars + i * 3, "\xE2\x96\x88", 3);   /* █ */
+        } else {
+            memcpy(bars + i * 3, "\xE2\x96\x91", 3);   /* ░ */
+        }
+    }
+    bars[WIFI_ROW_BARS * 3] = '\0';
+
+    char name[WIFI_MODEL_SSID_MAX];
+    const char *raw = (ap->ssid[0] != '\0') ? ap->ssid : "(隐藏网络)";
+    wifi_row_cut_ssid(name, sizeof(name), raw);
+
+    const char *lock = ap->is_encrypted ? " 锁" : "";
+    const char *mark = connected ? " 已连" : (ap->is_saved ? " 已存" : "");
+
+    snprintf(out, cap, "%s %s%s%s", bars, name, lock, mark);
+}
+
 /* ===================== 连接阶段状态机 ===================== */
 
 void wifi_conn_state_init(wifi_conn_state_t *st)

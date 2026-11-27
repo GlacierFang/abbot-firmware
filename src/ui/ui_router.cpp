@@ -568,10 +568,6 @@ static void ui_page_action(ui_page_t page)
                 }
             }
             break;
-        case 2:
-            /* 先离线体验：本地页（课表/书架/番茄钟/设置）照常可用 */
-            ui_router_go(PAGE_HOME);
-            break;
         default:
             break;
         }
