@@ -50,6 +50,9 @@ typedef enum {
 static audio_state_t s_state = AUDIO_IDLE;
 static uint8_t s_volume = 3;
 static bool s_muted = false;
+/* 关机流程要求立刻闭嘴：Core 1 置位，Core 0 的播放循环下一轮就退出。
+ * 只置标志，不在 Core 1 碰 I2S 驱动（会和 Core 0 抢 I2S_NUM_0）。 */
+static volatile bool s_stop_playback = false;
 
 /* 录音环形缓冲（PSRAM） */
 static int16_t *s_rec_buf = NULL;
@@ -260,6 +263,9 @@ hal_status_t hal_audio_play_wav_file(const char *path)
     const int gain = kVolumeGain[s_volume];
     int16_t pcm[AUDIO_CHUNK_MAX];
     for (;;) {
+        if (s_stop_playback) {
+            break;   /* 关机流程要求立刻停 */
+        }
         size_t n = f.read((uint8_t *)pcm, sizeof(pcm));
         if (n == 0) {
             break;
@@ -301,6 +307,9 @@ hal_status_t hal_audio_write_pcm(const int16_t *pcm, size_t samples)
     if (pcm == NULL || samples == 0) {
         return HAL_ERR_INVALID;
     }
+    if (s_stop_playback) {
+        return HAL_OK;   /* 关机中：不往功放送任何 PCM */
+    }
     if (s_state != AUDIO_PLAYING) {
         /* 半双工纪律：释放可能存在的 RX，再装 TX */
         i2s_driver_uninstall(I2S_NUM_0);
@@ -337,6 +346,20 @@ hal_status_t hal_audio_write_pcm(const int16_t *pcm, size_t samples)
 void hal_audio_set_muted(bool muted)
 {
     s_muted = muted;
+}
+
+/**
+ * 停止当前播放（TTS 流式 / WAV 文件）并让功放闭嘴。
+ *
+ * 跨核安全：本函数只在调用方所在核**置标志**，真正的中断由 Core 0 的音频
+ * 任务在下一轮播放循环观察到 —— 调用方严禁因此直接 uninstall I2S 驱动
+ * （会和 Core 0 抢 I2S_NUM_0）。关机流程用它保证「正在关机…」这段不出声。
+ */
+hal_status_t hal_audio_stop_playback(void)
+{
+    s_stop_playback = true;
+    s_muted = true;
+    return HAL_OK;
 }
 
 /* ===================== 设备端合成提示音 =====================

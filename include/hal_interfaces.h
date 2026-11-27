@@ -47,6 +47,11 @@ hal_status_t hal_display_init(void);
 hal_status_t hal_display_flush(void);
 hal_status_t hal_display_set_backlight(uint8_t level);             // 0~5 档
 uint8_t     hal_display_get_backlight(void);
+/**
+ * 背光从当前 PWM 占空比**平滑淡出**到 0（关机流程用）。
+ * steps 为渐暗步数，每步延时 5ms（例如 30 步 ≈ 150ms）。
+ */
+hal_status_t hal_display_fade_out_backlight(uint16_t steps);
 
 /* ---------- hal_camera：OV5640 拍题 ---------- */
 hal_status_t hal_camera_init(void);
@@ -70,6 +75,14 @@ hal_status_t hal_audio_start_record(void);                         // 16kHz/16bi
 hal_status_t hal_audio_stop_record(void);
 hal_status_t hal_audio_play_wav_file(const char *path);            // 校验 RIFF 头，跳过 44 字节
 hal_status_t hal_audio_set_volume(uint8_t level);                  // 1~5 档
+/**
+ * 停止当前播放（TTS 流式 / WAV 文件）并让功放静音。
+ *
+ * **跨核安全**：只在 Core 1 置标志位，真正的中断由 Core 0 的音频任务观察 ——
+ * 本函数严禁在调用方直接 uninstall I2S 驱动（会和 Core 0 抢 I2S_NUM_0）。
+ * 关机流程用它保证「正在关机…」这段不再出声。
+ */
+hal_status_t hal_audio_stop_playback(void);
 /**
  * 设备端合成提示音（不依赖 LittleFS / ding.wav 资产）。
  * 在功放上直接推出 freq_hz 的正弦音，时长 duration_ms 毫秒。

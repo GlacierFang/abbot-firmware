@@ -586,6 +586,31 @@ int net_wifi_connect_result(void)
     return g_conn_result;
 }
 
+/* ---------- 关机：停 Wi-Fi（doc/02 §3.6 关机契约） ----------
+ *
+ * UI 核（Core 1）只置标志；网络任务（Core 0）在自己的循环里执行关射频。
+ * NVS 里保存的 SSID/密码**不删** —— 深睡唤醒重启后照常自动重连。
+ */
+static volatile bool s_wifi_shutdown_req = false;
+
+void net_wifi_request_shutdown(void)
+{
+    s_wifi_shutdown_req = true;
+}
+
+bool net_wifi_service_shutdown(void)
+{
+    if (!s_wifi_shutdown_req) {
+        return false;
+    }
+    s_wifi_shutdown_req = false;
+    /* 关射频 + 关自动重连。NVS 里我们自己存的 SSID/密码一个字节都不动，
+     * 唤醒后 net_wifi_init_auto_connect() 照样能连回去。 */
+    WiFi.setAutoReconnect(false);
+    WiFi.mode(WIFI_OFF);
+    return true;
+}
+
 bool net_wifi_get_saved_ssid(char *out, size_t cap)
 {
     if (out == NULL || cap == 0) {

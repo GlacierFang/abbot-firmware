@@ -245,6 +245,16 @@ int  ui_pages_book_jump_select(void);
  */
 void ui_pages_set_pair_state(int state);
 
+/* ---------- 关机（doc/02 §3.6 关机契约） ---------- */
+/** 系统设置页「关机」项在 ui_build_settings() 里的注册序号（光标索引）。 */
+#define UI_SETTINGS_SHUTDOWN_ITEM 9
+/** 设置页「关机」项进入待确认态：文案切成「关机（长按确认）」；false 时还原成「关机」。 */
+void ui_pages_settings_shutdown_armed(bool armed);
+/** 设置页「关机」项的状态文案（如「正在关机…」）。 */
+void ui_pages_settings_shutdown_status(const char *text);
+/** 关机前把会话状态落盘（阅读进度 + 当日阅读时长，doc/07 §2.3 / §2.4）。 */
+void ui_pages_save_session_state(void);
+
 lv_obj_t *ui_overlay_root(ui_overlay_t overlay);
 void ui_overlay_set_text(ui_overlay_t overlay, const char *text);
 void ui_overlay_set_visible(ui_overlay_t overlay, bool visible);

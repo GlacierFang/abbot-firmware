@@ -182,3 +182,15 @@ uint8_t hal_display_get_backlight(void)
 {
     return s_backlight_level;
 }
+
+hal_status_t hal_display_fade_out_backlight(uint16_t steps)
+{
+    if (steps == 0) {
+        steps = 1;
+    }
+    /* 从当前 PWM 占空比线性淡到 0（每步 5ms）—— 关机时看着屏幕慢慢暗下去。 */
+    s_display.fadeOutBacklight(steps);
+    s_backlight_level = 0;
+    s_backlight_value = 0;
+    return HAL_OK;
+}

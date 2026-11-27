@@ -28,6 +28,8 @@ SCAN = [
     "src/ui/ui_ota_page.cpp",
     "src/ui/ui_display_port.cpp",
     "src/ui/ui_error.cpp",
+    "src/ui/ui_shutdown.cpp",
+    "src/ui/ui_shutdown_state.c",
     "src/net/net_api.cpp",
     "src/net/ota_client_esp.cpp",
     "src/net/net_dispatch.c",

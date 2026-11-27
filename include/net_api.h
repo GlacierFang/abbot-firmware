@@ -198,6 +198,17 @@ int net_wifi_connect_result(void);
 /** 读已保存网络的 SSID（给 UI 标「★」）。没保存过返回 false。 */
 bool net_wifi_get_saved_ssid(char *out, size_t cap);
 
+/* ---------- 关机：停 Wi-Fi（doc/02 §3.6 关机契约） ----------
+ *
+ * 跨核铁律同 §4.1：UI 核（Core 1）只发请求，网络任务（Core 0）执行关射频。
+ * 关射频**不动 NVS 里保存的 SSID/密码** —— 深睡唤醒后照常自动重连。
+ */
+
+/** UI 核调用：请求关机时停 Wi-Fi（幂等；只置标志，不碰 WiFi 驱动）。 */
+void net_wifi_request_shutdown(void);
+/** 网络任务调用：执行挂起的停 Wi-Fi 请求。返回 true = 本轮真的关了射频。 */
+bool net_wifi_service_shutdown(void);
+
 /* ===================== 配对与时间 ===================== */
 bool net_sync_ntp_time(void);
 

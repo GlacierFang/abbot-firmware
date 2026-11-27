@@ -23,6 +23,7 @@
 #include "ui_error.h"
 #include "ui_pages.h"
 #include "ui_ota_page.h"
+#include "ui_shutdown.h"
 #include "ui_weather.h"
 #include "voice_capture.h"
 
@@ -491,6 +492,14 @@ static void ui_page_action(ui_page_t page)
         case 7: ui_router_go(PAGE_CITY); break;
         /* 「手动校时」：离线手动校时（doc/04 §1.3 时钟熔断兜底） */
         case 8: ui_router_go(PAGE_MANUAL_CLOCK); break;
+        /* 「关机」：短按进入待确认态；再短按一下 = 取消（doc/02 §3.6） */
+        case 9:
+            if (ui_shutdown_armed()) {
+                ui_shutdown_cancel();
+            } else {
+                ui_shutdown_request();
+            }
+            break;
         default: ui_toast("这个设置还在准备中"); break;
         }
         break;
@@ -947,6 +956,14 @@ void ui_router_handle_gesture(ui_gesture_t gesture)
         ui_page_side(s_current, (gesture == GESTURE_LEFT) ? -1 : 1);
         break;
     case GESTURE_LONG:
+        /* 关机待确认态：光标停在「关机」项上时长按 = 确认关机（doc/02 §3.6）。
+         * 这一步放在通用「长按 = 退出」之前：待确认态是用户自己刚点进去的，
+         * 长按确认关机符合预期；光标不在「关机」项上时，长按仍是退出。 */
+        if (s_current == PAGE_SETTINGS && ui_shutdown_armed() &&
+            ui_pages_cursor_index(s_current) == UI_SETTINGS_SHUTDOWN_ITEM) {
+            ui_shutdown_confirm();
+            break;
+        }
         /* 退出: 退回上一级 */
         if (s_in_book) {
             switch (s_current_book) {
@@ -1054,6 +1071,17 @@ void ui_router_tick(void)
      * 番茄钟的倒计时挂在这里 —— 用毫秒计数，不做秒级累加。 */
     uint32_t now = (uint32_t)millis();
     ui_pages_pomodoro_tick(now);
+
+    /* 关机时序：待确认态 → 收尾 → 背光淡出 → 深睡（doc/02 §3.6）。
+     * 只在 RUNNING 态才有实际动作；待确认态靠 ui_shutdown_armed() 判。 */
+    if (ui_shutdown_armed()) {
+        /* 光标离开「关机」项 = 用户改主意了，把待确认态收掉 */
+        if (s_current != PAGE_SETTINGS ||
+            ui_pages_cursor_index(s_current) != UI_SETTINGS_SHUTDOWN_ITEM) {
+            ui_shutdown_cancel();
+        }
+    }
+    ui_shutdown_tick(now);
 
     /*
      * 录音浮层：倒计时与音量档（doc/03 §3.1 的动态显示）。

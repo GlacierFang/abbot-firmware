@@ -416,6 +416,9 @@ static void task_net_worker(void *arg)
          *   - 扫描请求 → 真正扫一次，把结果收进缓存；
          *   - 连接请求 → 发起连接（非阻塞）并推进连接状态。
          * UI 核只提交请求、读状态，这三行是唯一的执行点。 */
+        /* 关机请求（Core 0 执行）：关射频，不删 NVS 里存的 SSID/密码。 */
+        net_wifi_service_shutdown();
+
         net_wifi_service_connect();
         net_wifi_connect_poll();
         net_wifi_service_scan();

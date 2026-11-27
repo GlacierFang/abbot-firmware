@@ -635,6 +635,10 @@ static void ui_build_settings(lv_obj_t *content)
     /* 第 9 项：离线手动校时（doc/04 §1.3 时钟熔断时的人工兜底） */
     lv_obj_t *clock_row = ui_make_list_item(content, "  手动校时", NULL);
     lv_obj_align(clock_row, LV_ALIGN_TOP_LEFT, 0, 8 * 40);
+    /* 第 10 项：关机（doc/02 §3.6 关机契约）
+     * 短按进待确认态（文案变「关机（长按确认）」），再长按摇杆确认关机。 */
+    lv_obj_t *shutdown_row = ui_make_list_item(content, "  关机", NULL);
+    lv_obj_align(shutdown_row, LV_ALIGN_TOP_LEFT, 0, 9 * 40);
 }
 
 /* ===================== 13. 选择城市 (PAGE_CITY)
@@ -1823,6 +1827,35 @@ static void ui_cursor_render(ui_page_t page)
     }
 }
 
+/* ===================== 关机项（doc/02 §3.6 关机契约） ===================== */
+
+/** 改设置页「关机」那一行的文案（行首标记由光标渲染统一补）。 */
+static void ui_settings_shutdown_set_text(const char *text)
+{
+    if (s_item_count[PAGE_SETTINGS] <= UI_SETTINGS_SHUTDOWN_ITEM) {
+        return;
+    }
+    ui_item_t *item = &s_items[PAGE_SETTINGS][UI_SETTINGS_SHUTDOWN_ITEM];
+    if (item->label == NULL) {
+        return;
+    }
+    snprintf(item->text, UI_ITEM_TEXT_MAX, "%s", text);
+    ui_cursor_render(PAGE_SETTINGS);
+}
+
+void ui_pages_settings_shutdown_armed(bool armed)
+{
+    ui_settings_shutdown_set_text(armed ? "关机（长按确认）" : "关机");
+}
+
+void ui_pages_settings_shutdown_status(const char *text)
+{
+    if (text == NULL) {
+        return;
+    }
+    ui_settings_shutdown_set_text(text);
+}
+
 int ui_pages_cursor_move(ui_page_t page, int delta)
 {
     if (page < 0 || page >= (int)PAGE_COUNT || s_item_count[page] == 0) {
@@ -2195,6 +2228,19 @@ static void ui_book_save_progress(void)
         ui_bookmarks_set(&s_bookmarks, name, s_reader_offset, s_reader_size);
     }
     ui_book_save_marks();
+}
+
+/**
+ * 关机前把会话状态落盘：阅读进度 + 当日阅读时长（doc/07 §2.3 / §2.4）。
+ *
+ * 写盘走 ui_data_* 队列 → Core 0 存储任务完成（UI 核不碰 TF 卡，doc/02 §4.1）。
+ */
+void ui_pages_save_session_state(void)
+{
+    if (!s_bookmarks_loaded) {
+        ui_book_load_marks();
+    }
+    ui_book_save_progress();
 }
 
 /** 跨日清零（doc/07 §2.4）：日期变了就把当日已读秒数清零。 */

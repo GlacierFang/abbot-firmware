@@ -129,6 +129,11 @@ jobs:
               test/test_boot_image.c src/ui/boot_image.c \
               -o /tmp/test_boot_image
           /tmp/test_boot_image
+          # 关机状态机（IDLE -> ARMED -> RUNNING 的不可逆规则）—— 纯 C，主机侧可测
+          gcc -Wall -Wextra -Werror -I include -I src \
+              test/test_ui_shutdown_state.c src/ui/ui_shutdown_state.c \
+              -o /tmp/test_ui_shutdown_state
+          /tmp/test_ui_shutdown_state
           bash test/host_check_arduino.sh
           # C/C++ 静态自检（static 函数先用后声明 / designated initializer 乱序）
           # —— 这两类错在主机侧就能查出来，不必等 Actions 一轮只暴露一个错误
