@@ -252,15 +252,15 @@ static void ui_styles_init(void)
 
     lv_style_init(&s_style_body);
     lv_style_set_text_color(&s_style_body, UI_C_TEXT);
-    lv_style_set_text_font(&s_style_body, &ui_font_cn_16);
+    lv_style_set_text_font(&s_style_body, &ui_font_cn_12);
 
     lv_style_init(&s_style_hint);
     lv_style_set_text_color(&s_style_hint, UI_C_SUBTEXT);
-    lv_style_set_text_font(&s_style_hint, &ui_font_cn_16);
+    lv_style_set_text_font(&s_style_hint, &ui_font_cn_12);
 
     lv_style_init(&s_style_status);
     lv_style_set_text_color(&s_style_status, UI_C_SUBTEXT);
-    lv_style_set_text_font(&s_style_status, &ui_font_cn_16);
+    lv_style_set_text_font(&s_style_status, &ui_font_cn_12);
 
     s_styles_ready = true;
 }
@@ -921,7 +921,7 @@ static void ui_wifi_render_status(void)
     if (s_wifi_conn.phase == WIFI_CONN_SCANNING) {
         text = "正在搜索附近的无线网络…";
     } else if (s_wifi_conn.phase == WIFI_CONN_IDLE && s_wifi_ap_count == 0) {
-        /* 16px 字库下这行要控制在 17 字以内, 否则在 280px 宽的状态标签里折行压住分隔线 */
+        /* 状态行走 12px 档: 17 字 = 204px, 落在 280px 宽的标签里不折行, 不压 y=52 的分隔线 */
         text = "附近没搜到无线网络，请靠近路由器";
     } else if (s_wifi_conn.phase == WIFI_CONN_IDLE) {
         /* 列表就绪：状态行不占位，避免「正在准备」这种无信息量的废话 */
