@@ -459,12 +459,23 @@ static void ui_build_oobe(lv_obj_t *content)
     lv_obj_set_style_bg_opa(s_pages[PAGE_OOBE].hint, LV_OPA_TRANSP, 0);
 
     /* 状态行：等待连接网络 → 连接中… → 已联网
-     * （字库里没有 ● / ✓，用字库已有的 · 代替） */
+     * （字库里没有 ● / ✓，用字库已有的 · 代替）
+     * 位置：设计稿整屏底图里「CHOOSE A WIFI NETWORK」之下是空白带，
+     * 状态行与选项都落在这条带里并整体居中 —— 不压设计稿文案，也不贴左边。 */
     s_oobe_state_label = ui_make_label(content, "等待连接网络", false);
-    lv_obj_set_pos(s_oobe_state_label, 8, 268);
+    lv_obj_set_width(s_oobe_state_label, 320);
+    lv_obj_set_style_text_align(s_oobe_state_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_pos(s_oobe_state_label, 0, 312);
 
     lv_obj_t *item1 = ui_make_list_item(content, "> [ 连接 Wi-Fi 网络 ]", NULL);
-    lv_obj_set_pos(item1, 8, 304);
+    lv_obj_set_size(item1, 320, 34);
+    lv_obj_set_pos(item1, 0, 352);
+    /* 行内标签宽 316（320 − 2×pad）→ 文字在行内居中，整行视觉居中 */
+    lv_obj_t *item1_label = lv_obj_get_child(item1, 0);
+    if (item1_label) {
+        lv_obj_set_width(item1_label, 316);
+        lv_obj_set_style_text_align(item1_label, LV_TEXT_ALIGN_CENTER, 0);
+    }
 }
 
 /** 按接入状态刷新 OOBE 状态行（文案温和，不出现任何技术术语）。 */

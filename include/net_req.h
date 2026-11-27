@@ -25,7 +25,6 @@ extern "C" {
 
 /* ---------- 纯 API 路径（签名口径，doc/05 §3.2） ---------- */
 #define NR_PATH_PING      "/api/v1/ping"
-#define NR_PATH_PAIR      "/api/v1/pair"
 /* 自动登记（零码）：设备开机联网后自报身份，网关签发密钥并落盘（doc/04 §1.2）。 */
 #define NR_PATH_REGISTER  "/api/v1/device/register"
 #define NR_PATH_BOOTSTRAP "/api/v1/sync/bootstrap"

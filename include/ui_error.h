@@ -21,7 +21,7 @@ typedef enum {
     ERR_NONE = 0,
     ERR_AUTH_4001,
     ERR_CLOCK_NEED_SYNC,
-    ERR_PAIR_4002,
+    ERR_KEY_4002,
     ERR_ASR_4003,
     ERR_RATE_4290,
     ERR_QUOTA_4291,
