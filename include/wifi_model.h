@@ -121,6 +121,9 @@ const char *wifi_conn_hint(const wifi_conn_state_t *st);
  */
 void wifi_model_format_row(char *out, size_t cap, const WifiApInfo *ap, int connected);
 
+/* 行尾元信息（锁 / 已连 / 已存）—— 右对齐一列, 与左列 SSID 分开排。 */
+void wifi_model_format_meta(char *out, size_t cap, const WifiApInfo *ap, int connected);
+
 #ifdef __cplusplus
 }
 #endif

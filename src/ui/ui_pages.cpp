@@ -36,6 +36,7 @@
 #define UI_C_SUBTEXT   lv_color_hex(0x6B7280)
 #define UI_C_ACCENT    lv_color_hex(0x2F6FED)
 #define UI_C_WARN      lv_color_hex(0xB42318)
+#define UI_C_SELECT    lv_color_hex(0xEAF1FE)   /* 选中行底色 */
 
 /* ===================== 三区几何（doc/03 §二） ===================== */
 #define UI_STATUS_H    24
@@ -776,6 +777,9 @@ static struct WifiApInfo s_wifi_aps[WIFI_MODEL_MAX_APS];
 static lv_obj_t *s_wifi_status_label = NULL;
 static lv_obj_t *s_wifi_row_label[WIFI_VISIBLE_ROWS];
 static lv_obj_t *s_wifi_rescan_label = NULL;
+static lv_obj_t *s_wifi_rescan_row = NULL;
+static lv_obj_t *s_wifi_rows[WIFI_VISIBLE_ROWS];
+static lv_obj_t *s_wifi_row_meta[WIFI_VISIBLE_ROWS];
 static int s_wifi_ap_count = 0;
 static int s_wifi_cursor = 0;     /* 0..ap_count-1 = 热点；= ap_count 时是「重新扫描」 */
 static int s_wifi_scroll = 0;      /* 列表滚动偏移 */
@@ -810,19 +814,47 @@ static void ui_build_wifi_scan(lv_obj_t *content)
 {
     lv_obj_t *title = ui_make_label(content, "选择无线网络", true);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
 
+    /* 状态行与标题同轴居中；列表就绪后状态行留空（不占位、不说废话）。 */
     s_wifi_status_label = ui_make_label(content, "正在搜索附近的无线网络…", false);
-    lv_obj_align(s_wifi_status_label, LV_ALIGN_TOP_LEFT, 0, 26);
+    lv_obj_align(s_wifi_status_label, LV_ALIGN_TOP_MID, 0, 28);
+    lv_obj_set_style_text_align(s_wifi_status_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(s_wifi_status_label, UI_C_SUBTEXT, 0);
+
+    /* 标题区与列表区之间的细分隔线 */
+    lv_obj_t *sep = lv_obj_create(content);
+    lv_obj_set_size(sep, 288, 1);
+    lv_obj_set_pos(sep, 0, 52);
+    lv_obj_set_style_bg_color(sep, UI_C_LINE, 0);
+    lv_obj_set_style_bg_opa(sep, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(sep, 0, 0);
+    lv_obj_clear_flag(sep, LV_OBJ_FLAG_SCROLLABLE);
 
     int i;
     for (i = 0; i < WIFI_VISIBLE_ROWS; i++) {
         lv_obj_t *row = ui_make_row(content, &s_wifi_row_label[i]);
-        lv_obj_align(row, LV_ALIGN_TOP_LEFT, 0, 58 + i * WIFI_ROW_H);
+        lv_obj_align(row, LV_ALIGN_TOP_LEFT, 0, 62 + i * WIFI_ROW_H);
+        lv_obj_set_style_radius(row, 6, 0);
+        s_wifi_rows[i] = row;
+
+        /* 左列：信号格 + SSID（宽度受限，超出用省略号收尾） */
+        lv_obj_set_width(s_wifi_row_label[i], 228);
+        lv_label_set_long_mode(s_wifi_row_label[i], LV_LABEL_LONG_DOT);
+
+        /* 右列：锁 / 已连 / 已存 —— 右对齐成一条直边 */
+        lv_obj_t *meta = lv_label_create(row);
+        lv_label_set_text(meta, "");
+        lv_obj_add_style(meta, &s_style_body, 0);
+        lv_obj_set_style_text_color(meta, UI_C_SUBTEXT, 0);
+        lv_obj_align(meta, LV_ALIGN_RIGHT_MID, 0, 0);
+        s_wifi_row_meta[i] = meta;
     }
 
-    /* 最后一行固定是「重新扫描」 */
-    lv_obj_t *rescan = ui_make_row(content, &s_wifi_rescan_label);
-    lv_obj_align(rescan, LV_ALIGN_TOP_LEFT, 0, 58 + WIFI_VISIBLE_ROWS * WIFI_ROW_H);
+    /* 「重新扫描」紧跟最后一个可见热点 —— 不占固定行号，避免列表短时留出黑洞 */
+    s_wifi_rescan_row = ui_make_row(content, &s_wifi_rescan_label);
+    lv_obj_align(s_wifi_rescan_row, LV_ALIGN_TOP_LEFT, 0, 62);
+    lv_obj_set_style_radius(s_wifi_rescan_row, 6, 0);
     lv_label_set_text(s_wifi_rescan_label, "  [ 重新扫描周边热点 ]");
 }
 
@@ -835,18 +867,45 @@ static void ui_wifi_render_rows(void)
         int idx = s_wifi_scroll + i;
         if (idx >= s_wifi_ap_count) {
             lv_label_set_text(s_wifi_row_label[i], "");
+            lv_label_set_text(s_wifi_row_meta[i], "");
+            lv_obj_add_flag(s_wifi_rows[i], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_style_bg_opa(s_wifi_rows[i], LV_OPA_TRANSP, 0);
             continue;
         }
+        lv_obj_clear_flag(s_wifi_rows[i], LV_OBJ_FLAG_HIDDEN);
         int connected = (s_wifi_connected_ssid[0] != '\0' &&
                          strcmp(s_wifi_aps[idx].ssid, s_wifi_connected_ssid) == 0);
         wifi_model_format_row(buf, sizeof(buf), &s_wifi_aps[idx], connected);
         snprintf(s_wifi_line, sizeof(s_wifi_line), "%s%s",
                  (idx == s_wifi_cursor) ? "> " : "  ", buf);
         lv_label_set_text(s_wifi_row_label[i], s_wifi_line);
-        /* 选中态：光标所在行高亮，其余保持常规文字色 */
+        char meta[16];
+        wifi_model_format_meta(meta, sizeof(meta), &s_wifi_aps[idx], connected);
+        lv_label_set_text(s_wifi_row_meta[i], meta);
+        /* 选中态：光标所在行高亮（蓝字 + 淡蓝行底），其余保持常规文字色 */
         lv_obj_set_style_text_color(s_wifi_row_label[i],
                                     (idx == s_wifi_cursor) ? UI_C_ACCENT : UI_C_TEXT, 0);
+        lv_obj_set_style_bg_color(s_wifi_rows[i], UI_C_SELECT, 0);
+        lv_obj_set_style_bg_opa(s_wifi_rows[i],
+                                (idx == s_wifi_cursor) ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+        lv_obj_set_style_text_color(s_wifi_row_meta[i],
+                                    (idx == s_wifi_cursor) ? UI_C_ACCENT : UI_C_SUBTEXT, 0);
     }
+
+    /* 「重新扫描」行紧跟最后一个可见热点 */
+    int visible = s_wifi_ap_count - s_wifi_scroll;
+    if (visible < 0) {
+        visible = 0;
+    }
+    if (visible > WIFI_VISIBLE_ROWS) {
+        visible = WIFI_VISIBLE_ROWS;
+    }
+    lv_obj_align(s_wifi_rescan_row, LV_ALIGN_TOP_LEFT, 0, 62 + visible * WIFI_ROW_H);
+    lv_obj_set_style_bg_color(s_wifi_rescan_row, UI_C_SELECT, 0);
+    lv_obj_set_style_bg_opa(s_wifi_rescan_row,
+                            (s_wifi_cursor == s_wifi_ap_count) ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+    lv_obj_set_style_text_color(s_wifi_rescan_label,
+                                (s_wifi_cursor == s_wifi_ap_count) ? UI_C_ACCENT : UI_C_SUBTEXT, 0);
     snprintf(s_wifi_line, sizeof(s_wifi_line), "%s[ 重新扫描周边热点 ]",
              (s_wifi_cursor == s_wifi_ap_count) ? "> " : "  ");
     lv_label_set_text(s_wifi_rescan_label, s_wifi_line);
@@ -862,7 +921,11 @@ static void ui_wifi_render_status(void)
     if (s_wifi_conn.phase == WIFI_CONN_SCANNING) {
         text = "正在搜索附近的无线网络…";
     } else if (s_wifi_conn.phase == WIFI_CONN_IDLE && s_wifi_ap_count == 0) {
-        text = "附近没搜到无线网络，靠近路由器再试一次";
+        /* 16px 字库下这行要控制在 17 字以内, 否则在 280px 宽的状态标签里折行压住分隔线 */
+        text = "附近没搜到无线网络，请靠近路由器";
+    } else if (s_wifi_conn.phase == WIFI_CONN_IDLE) {
+        /* 列表就绪：状态行不占位，避免「正在准备」这种无信息量的废话 */
+        text = "";
     } else if (s_wifi_conn.phase == WIFI_CONN_FAILED) {
         text = "无线网络连接失败，请核对密码";
     }

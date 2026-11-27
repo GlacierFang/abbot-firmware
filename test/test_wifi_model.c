@@ -220,6 +220,7 @@ static void test_format_row(void)
 {
     struct WifiApInfo ap;
     char out[128];
+    char meta[16];
 
     memset(&ap, 0, sizeof(ap));
     snprintf(ap.ssid, sizeof(ap.ssid), "%s", "Home_WiFi_5G");
@@ -229,11 +230,14 @@ static void test_format_row(void)
 
     wifi_model_format_row(out, sizeof(out), &ap, 0);
     CHECK(strstr(out, "Home_WiFi_5G") != NULL);
-    CHECK(strstr(out, "锁") != NULL);       /* 加密网络标锁 */
-    CHECK(strstr(out, "已存") == NULL);     /* 未保存且未连接 */
+    CHECK(strstr(out, "锁") == NULL);       /* 锁标已移到行尾元信息列 */
 
-    wifi_model_format_row(out, sizeof(out), &ap, 1);
-    CHECK(strstr(out, "已连") != NULL);     /* 已连接 */
+    wifi_model_format_meta(meta, sizeof(meta), &ap, 0);
+    CHECK(strstr(meta, "锁") != NULL);      /* 加密网络标锁 */
+    CHECK(strstr(meta, "已存") == NULL);    /* 未保存且未连接 */
+
+    wifi_model_format_meta(meta, sizeof(meta), &ap, 1);
+    CHECK(strstr(meta, "已连") != NULL);    /* 已连接 */
 
     /* 弱信号：实心格变少 */
     ap.rssi = -85;

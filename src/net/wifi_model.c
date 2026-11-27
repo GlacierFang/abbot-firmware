@@ -164,10 +164,27 @@ void wifi_model_format_row(char *out, size_t cap, const WifiApInfo *ap, int conn
     const char *raw = (ap->ssid[0] != '\0') ? ap->ssid : "(隐藏网络)";
     wifi_row_cut_ssid(name, sizeof(name), raw);
 
-    const char *lock = ap->is_encrypted ? " 锁" : "";
-    const char *mark = connected ? " 已连" : (ap->is_saved ? " 已存" : "");
+    (void)connected;   /* 已连/已存/锁 移到行尾元信息列（见 wifi_model_format_meta） */
 
-    snprintf(out, cap, "%s %s%s%s", bars, name, lock, mark);
+    snprintf(out, cap, "%s %s", bars, name);
+}
+
+void wifi_model_format_meta(char *out, size_t cap, const WifiApInfo *ap, int connected)
+{
+    if (out == NULL || cap == 0) {
+        return;
+    }
+    out[0] = '\0';
+    if (ap == NULL) {
+        return;
+    }
+    if (connected) {
+        snprintf(out, cap, "已连");
+    } else if (ap->is_saved) {
+        snprintf(out, cap, "已存");
+    } else if (ap->is_encrypted) {
+        snprintf(out, cap, "锁");
+    }
 }
 
 /* ===================== 连接阶段状态机 ===================== */
