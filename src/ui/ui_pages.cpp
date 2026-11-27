@@ -294,7 +294,7 @@ static lv_obj_t *ui_make_root(lv_obj_t *parent)
  * 三格对所有页面是**同一份内容**（天气来自服务端, Wi-Fi 与电量来自设备自身）,
  * 所以顶栏不随页面变 —— 页面自己的信息（今日剩多少分 / 读到哪了）画在内容区。
  *
- * 坐标按模拟屏 statusBar() 对齐: 左 x=6 / 中 x=120 / 右右对齐到 314。
+ * 坐标按模拟屏 statusBar() 对齐: 左 x=4 / 中 x=150 / 右右对齐(右缘距边 4px)。
  */
 static lv_obj_t *ui_make_status(lv_obj_t *root, ui_page_widgets_t *w)
 {
