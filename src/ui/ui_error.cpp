@@ -16,34 +16,34 @@ typedef struct {
 
 static const ui_error_entry_t s_table[ERR_COUNT] = {
     [ERR_NONE]            = { "",                                 ERR_SHOW_SILENT },
-    [ERR_AUTH_4001]       = { "设备时钟或安全凭证已过期，请联网校准时间后重试。", ERR_SHOW_CARD },
-    [ERR_CLOCK_NEED_SYNC] = { "设备时间尚未校准，请连接无线网络自动校时后再使用在线导学。", ERR_SHOW_CARD },
-    [ERR_KEY_4002]       = { "密钥校验未通过，请联网后重试。",                       ERR_SHOW_TOAST },
-    [ERR_ASR_4003]        = { "没有听清刚才的话，请靠近麦克风再说一次。",           ERR_SHOW_TOAST },
-    [ERR_RATE_4290]       = { "老师正在思考上一题，请稍等几秒再试。",               ERR_SHOW_TOAST },
-    [ERR_QUOTA_4291]      = { "今日深度导学次数已用完，明天再来或先刷本地卡片吧。",   ERR_SHOW_CARD },
-    [ERR_SERVER_5001]     = { "云端暂时开小差了，题目已帮你存进待问收件箱。",         ERR_SHOW_CARD },
-    [ERR_WIFI_AUTH_FAIL]  = { "无线网络连接失败，请核对密码后重试。",               ERR_SHOW_TOAST },
-    [ERR_NTP_SYNC_FAIL]   = { "自动校时暂未成功，可在设置中手动调整时间。",         ERR_SHOW_TOAST },
-    [ERR_CAM_AF_FAIL]     = { "画面对焦不够清晰，请保持平稳后重新拍摄。",           ERR_SHOW_TOAST },
+    [ERR_AUTH_4001]       = { "设备凭证已过期，请联网校准时间", ERR_SHOW_CARD },
+    [ERR_CLOCK_NEED_SYNC] = { "设备需联网校准时间", ERR_SHOW_CARD },
+    [ERR_KEY_4002]       = { "还没接上学习助手，请联网重试",                       ERR_SHOW_TOAST },
+    [ERR_ASR_4003]        = { "没听清，请靠近麦克风重试",           ERR_SHOW_TOAST },
+    [ERR_RATE_4290]       = { "老师正在思考，请稍候",               ERR_SHOW_TOAST },
+    [ERR_QUOTA_4291]      = { "今日深度导学次数已用完",   ERR_SHOW_CARD },
+    [ERR_SERVER_5001]     = { "云端异常，题目已存入待问收件箱",         ERR_SHOW_CARD },
+    [ERR_WIFI_AUTH_FAIL]  = { "无线网络连接失败，请核对密码",               ERR_SHOW_TOAST },
+    [ERR_NTP_SYNC_FAIL]   = { "自动校时未成功，请在设置中手动校时",         ERR_SHOW_TOAST },
+    [ERR_CAM_AF_FAIL]     = { "摄像头对焦失败，请保持平稳后重拍",           ERR_SHOW_TOAST },
     [ERR_TTS_FALLBACK]    = { "",                                 ERR_SHOW_SILENT },
-    [ERR_PACK_CORRUPT]    = { "该学习卡片包文件不完整，请在网页端重新同步。",         ERR_SHOW_CARD },
+    [ERR_PACK_CORRUPT]    = { "学科包校验失败，请重新同步",         ERR_SHOW_CARD },
     [ERR_TOC_INVALID]     = { "",                                 ERR_SHOW_SILENT },
-    [ERR_OTA_LOW_BAT]     = { "当前电量偏低，请先充电至 35% 以上再升级固件。",       ERR_SHOW_TOAST },
-    [ERR_OTA_LOW_RSSI]    = { "当前无线信号较弱，请靠近路由器后再升级固件。",       ERR_SHOW_TOAST },
-    [ERR_OTA_VERIFY_FAIL] = { "固件安装包校验未通过，已取消升级，设备可正常使用。",   ERR_SHOW_CARD },
-    [ERR_NO_TF_CARD]      = { "未检测到存储卡，请插入 TF 卡后继续使用。",           ERR_SHOW_RESIDENT },
-    [ERR_DISK_FULL]       = { "存储卡空间已满，请清理部分旧缓存后再试。",           ERR_SHOW_TOAST },
-    [ERR_LOW_BAT_WARN]    = { "电量偏低，请及时连接充电线。",                       ERR_SHOW_TOAST },
-    [ERR_LOW_BAT_SLEEP]   = { "电量即将耗尽，设备即将进入休眠保护，充电后长按摇杆唤醒。", ERR_SHOW_FULLSCREEN },
-    [ERR_PSRAM_OOM]       = { "内存空间紧张，请稍后再试。",                         ERR_SHOW_TOAST },
-    [ERR_HW_INIT_FAIL]    = { "设备硬件自检异常，请检查排线连接后重启电源。",         ERR_SHOW_FULLSCREEN },
+    [ERR_OTA_LOW_BAT]     = { "电量不足 35%，请充电后再升级",       ERR_SHOW_TOAST },
+    [ERR_OTA_LOW_RSSI]    = { "无线信号过弱，请靠近路由器后升级",       ERR_SHOW_TOAST },
+    [ERR_OTA_VERIFY_FAIL] = { "固件校验失败，升级已取消",   ERR_SHOW_CARD },
+    [ERR_NO_TF_CARD]      = { "未检测到存储卡，请插入后使用",           ERR_SHOW_RESIDENT },
+    [ERR_DISK_FULL]       = { "存储空间已满，请清理后重试",           ERR_SHOW_TOAST },
+    [ERR_LOW_BAT_WARN]    = { "电量偏低，请及时充电",                       ERR_SHOW_TOAST },
+    [ERR_LOW_BAT_SLEEP]   = { "电量将耗尽，设备进入休眠保护，充电后长按摇杆唤醒", ERR_SHOW_FULLSCREEN },
+    [ERR_PSRAM_OOM]       = { "内存不足，请稍后重试",                         ERR_SHOW_TOAST },
+    [ERR_HW_INIT_FAIL]    = { "硬件自检失败，请检查排线后重启",         ERR_SHOW_FULLSCREEN },
 };
 
 const char *ui_error_text(ui_error_code_t code)
 {
     if (code >= ERR_COUNT) {
-        return "设备遇到一点小状况，请稍后再试。";
+        return "设备异常，请稍后重试";
     }
     return s_table[code].text;
 }

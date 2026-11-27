@@ -460,9 +460,9 @@ static void ui_page_action(ui_page_t page)
         if (hal_photo_request_submit(sid, 1, 0,
                                      ui_pages_current_pack_id(),
                                      ui_pages_current_card_id()) == HAL_OK) {
-            ui_toast("已拍照，正在解题");
+            ui_toast("拍照成功，正在解题");
         } else {
-            ui_toast("相机忙，请稍后再试");
+            ui_toast("相机未准备好，请稍后重试");
         }
         break;
     }
@@ -473,9 +473,9 @@ static void ui_page_action(ui_page_t page)
             if (!s_paired) {
                 char ssid[33] = { 0 };
                 if (net_wifi_get_saved_ssid(ssid, sizeof ssid) && ssid[0] != '\0') {
-                    ui_toast("学习助手还没接上，稍后自动重试");
+                    ui_toast("学习助手未连接，正在自动重试");
                 } else {
-                    ui_toast("还没联网，先连上网再试");
+                    ui_toast("设备未联网，请先连接网络");
                 }
                 break;
             }
@@ -494,7 +494,7 @@ static void ui_page_action(ui_page_t page)
         switch (idx) {
         case 0: ui_router_go(PAGE_WIFI_SCAN); break;
         case 3: ui_router_go(PAGE_OTA); break;
-        case 6: ui_toast("用左右键调整专注时长"); break;
+        case 6: ui_toast("请用左右键调整专注时长"); break;
         /* 「所在城市」：进候选城市列表（doc/05 §5.2） */
         case 7: ui_router_go(PAGE_CITY); break;
         /* 「手动校时」：离线手动校时（doc/04 §1.3 时钟熔断兜底） */
@@ -507,7 +507,7 @@ static void ui_page_action(ui_page_t page)
                 ui_shutdown_request();
             }
             break;
-        default: ui_toast("这个设置还在准备中"); break;
+        default: ui_toast("该功能尚未开放"); break;
         }
         break;
     case PAGE_POMODORO:
@@ -523,7 +523,7 @@ static void ui_page_action(ui_page_t page)
                 ui_router_go(PAGE_SETTINGS);
                 ui_toast("时间已更新");
             } else if (r == MC_RESULT_BAD) {
-                ui_toast("时间格式不对，请重新输入");
+                ui_toast("时间格式错误，请重新输入");
             }
         }
         break;
@@ -532,17 +532,17 @@ static void ui_page_action(ui_page_t page)
         {
             const ui_city_candidate_t *c = ui_pages_city_selected();
             if (c == NULL) {
-                ui_toast("这里还没有可选的城市");
+                ui_toast("未找到可选城市");
                 break;
             }
             /* 校验能不能直接给服务端用（不是经纬度，是地名） */
             if (ui_weather_validate_city(c->en) != 0) {
-                ui_toast("这个城市名暂时用不了");
+                ui_toast("城市名不可用");
                 break;
             }
             /* 先落盘（离线兜底 + 重启后还在），再上报 */
             if (ui_data_city_set(c->en) != UI_DATA_OK) {
-                ui_toast("没能保存，稍后再试");
+                ui_toast("保存失败，请稍后重试");
                 break;
             }
             snprintf(s_city_current, sizeof(s_city_current), "%s", c->en);
@@ -553,7 +553,7 @@ static void ui_page_action(ui_page_t page)
             s_hb_followups = 1;
             s_hb_due_ms = (uint32_t)millis() + 1000;
             ui_heartbeat_post();
-            ui_toast("已保存，稍等就显示当地天气");
+            ui_toast("已保存，稍后显示当地天气");
             ui_router_go(PAGE_SETTINGS);
         }
         break;
@@ -574,7 +574,7 @@ static void ui_page_action(ui_page_t page)
              */
             const char *pack_id = ui_pages_selected_pack_id();
             if (pack_id[0] == '\0') {
-                ui_toast("还没有下载学科包");
+                ui_toast("学科包未下载，请先同步");
                 break;
             }
             net_request_t req = {};
@@ -582,7 +582,7 @@ static void ui_page_action(ui_page_t page)
             snprintf(req.pack_id, sizeof(req.pack_id), "%s", pack_id);
             if (hal_net_request_queue() == NULL ||
                 xQueueSend(hal_net_request_queue(), &req, 0) != pdTRUE) {
-                ui_toast("网络还在准备中，等一下就好");
+                ui_toast("网络未准备好，请稍候");
             } else {
                 ui_toast("正在打开学科包");
             }
@@ -628,7 +628,7 @@ static void ui_page_action(ui_page_t page)
             req.op = NET_OP_OTA_CHECK;
             if (hal_net_request_queue() == NULL ||
                 xQueueSend(hal_net_request_queue(), &req, 0) != pdTRUE) {
-                ui_toast("网络还在准备中，等一下就好");
+                ui_toast("网络未准备好，请稍候");
             } else {
                 ui_toast("正在检查更新");
             }
@@ -796,7 +796,7 @@ static void ui_book_gesture(ui_gesture_t gesture)
             if (ui_pages_bookshelf_open_selected() == 0) {
                 ui_router_go_book(PAGE_READER);
             } else {
-                ui_toast("暂时读不到内容");
+                ui_toast("内容读取失败");
             }
         } else if (s_current_book == PAGE_READER) {
             ui_router_go_book(PAGE_BOOK_MENU);
@@ -807,7 +807,7 @@ static void ui_book_gesture(ui_gesture_t gesture)
             } else if (act == UI_BOOK_ACT_JUMP) {
                 ui_router_go_book(PAGE_BOOK_JUMP);
             } else if (act == UI_BOOK_ACT_BRIGHT) {
-                ui_toast("用左右键调节亮度");
+                ui_toast("请用左右键调节亮度");
             } else {
                 ui_pages_reader_leave();
                 ui_router_go_book(PAGE_BOOKSHELF);
@@ -1189,7 +1189,7 @@ void ui_router_handle_net_reply(int32_t biz_code, char *payload, uint32_t len)
 
     /* 文案一律由 UI 层出（doc/03 §四）：HAL / net 层不拼面向用户的中文 */
     if (s_last_biz == 4004) {
-        ui_toast("请先在设置里完成学段选择");
+        ui_toast("请先在设置中选择学段");
         return;
     }
     if (s_last_biz != 0) {
@@ -1209,7 +1209,7 @@ void ui_router_handle_net_reply(int32_t biz_code, char *payload, uint32_t len)
         if (s_last_biz < 0) {
             /* 传输层失败 = 连不上网关（无网络 / 未配对）。
              * 这不是排队事件，就是一句「目前无网络」+ 允许重试。 */
-            ui_toast("目前无网络，请检查连接后重试");
+            ui_toast("设备未联网，请检查网络连接");
             return;
         }
         /*
@@ -1224,11 +1224,11 @@ void ui_router_handle_net_reply(int32_t biz_code, char *payload, uint32_t len)
             } else if (s_last_biz == NET_BIZ_QUOTA) {
                 ui_show_friendly_error(ERR_QUOTA_4291);
             } else {
-                ui_toast("这次没能问成，请稍后再试");
+                ui_toast("本次提问未成功，请重试");
             }
             return;
         }
-        ui_toast("网络请求未成功，再试一次");
+        ui_toast("网络请求失败，请重试");
         return;
     }
 
@@ -1239,7 +1239,7 @@ void ui_router_handle_net_reply(int32_t biz_code, char *payload, uint32_t len)
         ui_pages_set_solve_result(res.display_markdown, res.feynman_question);
         ui_router_go(PAGE_SOLVE_RESULT);
     } else {
-        ui_toast("已收到云端应答");
+        ui_toast("回复没读出来，请再问一次");
     }
 }
 
@@ -1263,18 +1263,18 @@ void ui_router_handle_cards(card_pack_t *pack, int rc)
         s_cards = NULL;
     }
     if (pack == NULL) {
-        ui_toast("暂时打不开这个学科包");
+        ui_toast("学科包打不开，请稍后重试");
         return;
     }
     if (rc < 0 || pack->count <= 0) {
         heap_caps_free(pack);
         /* 文案温和，且**不出现加密、密钥这类技术词**（doc/03 §四 铁律） */
         if (rc == CARDS_ERR_KEY) {
-            ui_toast("学习助手还没接上，稍后自动重试");
+            ui_toast("学习助手未连接，正在自动重试");
         } else if (rc == CARDS_ERR_NOTFOUND) {
-            ui_toast("这个学科包还没下载好");
+            ui_toast("学科包还没下载好，请重新同步");
         } else {
-            ui_toast("暂时打不开这个学科包");
+            ui_toast("学科包打不开，请稍后重试");
         }
         return;
     }

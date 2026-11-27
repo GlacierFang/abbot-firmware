@@ -493,7 +493,7 @@ void ui_pages_set_pair_state(int state)
         text = "· 已联网";
         break;
     case UI_PAIR_STATE_FAILED:
-        text = "· 暂时没连上，会自动再试一次";
+        text = "· 连接失败，正在自动重试";
         break;
     default:
         text = "等待连接网络";
@@ -808,7 +808,7 @@ static lv_obj_t *ui_make_row(lv_obj_t *parent, lv_obj_t **out_label)
 
 static void ui_build_wifi_scan(lv_obj_t *content)
 {
-    lv_obj_t *title = ui_make_label(content, "附近的无线网络", true);
+    lv_obj_t *title = ui_make_label(content, "选择无线网络", true);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
 
     s_wifi_status_label = ui_make_label(content, "正在搜索附近的无线网络…", false);
@@ -864,7 +864,7 @@ static void ui_wifi_render_status(void)
     } else if (s_wifi_conn.phase == WIFI_CONN_IDLE && s_wifi_ap_count == 0) {
         text = "附近没搜到无线网络，靠近路由器再试一次";
     } else if (s_wifi_conn.phase == WIFI_CONN_FAILED) {
-        text = "无线网络连接失败，请核对密码后重试";
+        text = "无线网络连接失败，请核对密码";
     }
     lv_label_set_text(s_wifi_status_label, text);
 }
@@ -1999,7 +1999,7 @@ static void ui_pomodoro_render(void)
     if (s_pomo_state == POMO_PAUSED) {
         sub = "已暂停";
     } else if (s_pomo_state == POMO_DONE) {
-        sub = "已完成，休息一下吧";
+        sub = "已完成，专注结束";
     } else if (s_pomo_state == POMO_IDLE) {
         sub = "准备开始";
     }
@@ -2684,7 +2684,7 @@ static int ui_reader_render(void)
     }
     if (consumed == 0) {
         s_reader_consumed = 0;
-        lv_label_set_text(s_reader_body, "已经读到最后一页");
+        lv_label_set_text(s_reader_body, "已是最后一页");
         return 0;
     }
     s_reader_consumed = consumed;
@@ -2740,7 +2740,7 @@ int ui_pages_bookshelf_open_selected(void)
 void ui_pages_reader_next_page(void)
 {
     if (s_reader_consumed == 0) {
-        ui_toast("已经读到最后一页");
+        ui_toast("已是最后一页");
         return;
     }
     if (s_reader_history_count < UI_READER_HISTORY) {
