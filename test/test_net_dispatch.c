@@ -292,13 +292,13 @@ int main(void)
     free(resp);
     resp = NULL;
 
-    /* 5b. 拍题失败（断网/未配对）-> 直接失败返回，不入队、不补传。
+    /* 5b. 拍题失败（断网/未登记）-> 直接失败返回，不入队、不补传。
      * 失败后由 UI 提示「目前无网络」，用户重拍一次即可（2026-11-26 定）。 */
     reset();
     memset(&req, 0, sizeof req);
     req.op = NET_OP_SOLVE;
     snprintf(req.session_id, sizeof req.session_id, "sess_1");
-    g_solve_ok = false;          /* 模拟传输失败（断网/未配对） */
+    g_solve_ok = false;          /* 模拟传输失败（断网/未登记） */
     rc = net_dispatch(&req, &resp);
     CHECK(rc == -1, "失败返回 -1");
     free(resp);

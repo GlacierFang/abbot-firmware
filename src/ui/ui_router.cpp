@@ -93,7 +93,7 @@ static int  s_weather_cache_temp = 0;
 static char s_city_current[UI_DATA_CITY_MAX];
 static bool s_city_synced = false;
 
-/* 读配对标志（定义在“页面动作”段） */
+/* 读登记标志（定义在“页面动作”段） */
 static void ui_paired_refresh(void);
 
 /* 前置声明（定义在下面的“天气与城市”段）——
@@ -447,7 +447,7 @@ bool ui_router_in_book_module(void)
 
 /* ===================== 页面动作 ===================== */
 
-/** 读配对标志（/config/profile.json）。读不到就按未配对处理。 */
+/** 读登记标志（/config/profile.json）。读不到就按未登记处理。 */
 static void ui_paired_refresh(void)
 {
     int paired = 0;
@@ -497,7 +497,7 @@ static void ui_page_action(ui_page_t page)
     case PAGE_HOME:
         switch (idx) {
         case 0:
-            /* 拍题导学要靠云端解题：没配对时先给一句温和提示 */
+            /* 拍题导学要靠云端解题：没登记时先给一句温和提示 */
             if (!s_paired) {
                 char ssid[33] = { 0 };
                 if (net_wifi_get_saved_ssid(ssid, sizeof ssid) && ssid[0] != '\0') {
@@ -1243,7 +1243,7 @@ void ui_router_handle_net_reply(int32_t biz_code, char *payload, uint32_t len)
             return;
         }
         if (s_last_biz < 0) {
-            /* 传输层失败 = 连不上网关（无网络 / 未配对）。
+            /* 传输层失败 = 连不上网关（无网络 / 未登记）。
              * 这不是排队事件，就是一句「目前无网络」+ 允许重试。 */
             ui_toast("设备未联网，请检查网络连接");
             return;

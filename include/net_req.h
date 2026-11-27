@@ -3,7 +3,7 @@
  *
  * 与 `include/net_client.h` 同层：同一份实现可在 ESP32 固件与主机侧 native 测试中编译。
  * `net_client.h` 管密码学原语（签名/加密/解密），本文件管**协议形状**：
- *   - 组装业务明文 JSON（study/solve、study/voice、pair）；
+ *   - 组装业务明文 JSON（study/solve、study/voice）；
  *   - 按 doc/05 §5.1 自动注入 `edu_stage` / `enrollment_year` / `device_remaining_quota`；
  *   - 拼 URL（区分「签名用的纯路径」与「实际请求用的挂载前缀路径」）；
  *   - 解析 HTTP 响应（Content-Length 与 chunked 两种收包方式），取出
