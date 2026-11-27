@@ -390,6 +390,7 @@ static void task_net_worker(void *arg)
     bool paired = net_is_paired();
     uint32_t next_register_ms = 0;
     uint32_t next_clock_retry_ms = millis() + 60000;
+    uint32_t next_clock_report_ms = millis() + 5000;
 
     ui_command_t st = {};
     st.kind = 5;
@@ -408,6 +409,15 @@ static void task_net_worker(void *arg)
         }
         /* 整点低磨损检查点（doc/04 §1.3）—— 到点才写一次 NVS。 */
         net_clock_checkpoint_if_due();
+
+        /* 校时上报（doc/05 §5.3）：手动校时 / NTP 校时后把本地墙钟补报服务端。
+         * 只在队列空闲时做 —— 不跟业务请求抢 Core 0 的网络时间；
+         * 失败不重试到死，60 秒后再来一轮。 */
+        if ((q == NULL || uxQueueMessagesWaiting(q) == 0) &&
+            (int32_t)(millis() - next_clock_report_ms) >= 0) {
+            next_clock_report_ms = millis() + 60000;
+            net_clock_report_pending();
+        }
 
         net_request_t req = {};
         bool got = (q != NULL) && (xQueueReceive(q, &req, pdMS_TO_TICKS(100)) == pdTRUE);

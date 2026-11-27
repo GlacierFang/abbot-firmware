@@ -309,6 +309,9 @@ bool net_clock_checkpoint_if_due(void)
     return true;
 }
 
+/* 挂起一次服务端校时上报（doc/05 §5.3）。定义见本节末尾。 */
+static void net_clock_report_mark(bool manual);
+
 bool net_clock_set_manual(int year, int month, int day, int hour, int minute)
 {
     uint64_t epoch = clock_guard_epoch_from_local(year, month, day, hour, minute, 8 * 3600);
@@ -325,8 +328,85 @@ bool net_clock_set_manual(int year, int month, int day, int hour, int minute)
     tv.tv_usec = 0;
     settimeofday(&tv, NULL);
     net_clock_note_verified();
+    /* 挂起一次服务端上报（doc/05 §5.3）：由 net worker 联网后补发。
+     * 设备本地时钟已生效 —— 上报失败不影响本次校时结果。 */
+    net_clock_report_mark(true);
     Serial.printf("[%s] manual clock set %04d-%02d-%02d %02d:%02d\n", NET_TAG,
                   year, month, day, hour, minute);
+    return true;
+}
+
+/* ===================== 校时上报（doc/05 §5.3） =====================
+ *
+ * 设备自己的 RTC + NVS 才是时钟权威（doc/04 §1.3）；服务端只存一份**副本**
+ * 用于对账与排查时钟漂移，不参与熔断判定、也不改写服务端自己的时钟。
+ *
+ * 上报**必须**走 net worker（Core 0）—— 这里面是阻塞式 HTTP，Core 1 严禁执行。
+ * 待补报标记只放内存：设备重启后连 RTC 基线都不恢复（doc/04 §1.3 不从 NVS
+ * 恢复 RTC），标记与设备自身时钟同生命周期，不另占 NVS 写入预算。
+ *
+ * 标记只用 **bool**（不存 epoch）：标记在 Core 1 写、Core 0 读，64 位量跨核读
+ * 可能撕裂；上报的 epoch 直接取设备**当前**墙钟（time()）—— 那才是设备此刻
+ * 认为的几点，也是对账要的语义。
+ */
+static volatile bool s_clock_report_pending = false;  /* true = 有校时待上报 */
+static volatile bool s_clock_report_manual = false;   /* true = 手动校时，false = NTP */
+
+static void net_clock_report_mark(bool manual)
+{
+    s_clock_report_manual = manual;
+    s_clock_report_pending = true;
+}
+
+bool net_clock_report_pending(void)
+{
+    if (!s_clock_report_pending) {
+        return false;
+    }
+    if (!net_is_paired()) {
+        return false;   /* 没密钥签不了名 */
+    }
+    if (WiFi.status() != WL_CONNECTED) {
+        return false;   /* 没联网：留着标记，下轮再试 */
+    }
+
+    time_t now = 0;
+    time(&now);
+    uint64_t epoch = (uint64_t)now;
+    if (epoch < CLOCK_GUARD_MIN_VALID_EPOCH) {
+        return false;   /* 时钟还不可信，不报脏数据 */
+    }
+
+    char local_time[32];
+    net_local_time_utc8(now, local_time, sizeof local_time);
+    const char *source = s_clock_report_manual ? "manual" : "ntp";
+
+    int need = nr_build_clock_plain((long long)epoch, local_time, source, NULL, 0);
+    if (need <= 0) {
+        return false;
+    }
+    char *plain = (char *)malloc((size_t)need);
+    if (plain == NULL) {
+        return false;
+    }
+    if (nr_build_clock_plain((long long)epoch, local_time, source, plain, (size_t)need) < 0) {
+        free(plain);
+        return false;
+    }
+
+    int biz = -1;
+    char *resp = NULL;
+    bool ok = net_post_encrypted_json(NR_PATH_CLOCK, plain, &biz, &resp);
+    free(plain);
+    if (resp != NULL) {
+        free(resp);
+    }
+    if (!ok || biz != 0) {
+        Serial.printf("[%s] clock report failed (biz=%d)\n", NET_TAG, biz);
+        return false;   /* 留着标记，下次再报 */
+    }
+    s_clock_report_pending = false;
+    Serial.printf("[%s] clock reported %s (%s)\n", NET_TAG, local_time, source);
     return true;
 }
 
@@ -741,6 +821,9 @@ static bool net_sync_ntp_time_ms(uint32_t timeout_ms)
         time(&now);
         if (now > 1700000000) {   /* 2023-11-14 之后才算校时成功 */
             net_clock_note_verified();
+            /* NTP 校时也挂一次上报（doc/05 §5.3，source="ntp"）——
+             * 服务端据此知道设备此刻认为几点，用于对账。 */
+            net_clock_report_mark(false);
             return true;
         }
         delay(500);

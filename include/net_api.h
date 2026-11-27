@@ -254,6 +254,17 @@ bool net_clock_set_manual(int year, int month, int day, int hour, int minute);
 /** 整点低磨损检查点：到点才写一次 sys_clock。true = 本次写了。 */
 bool net_clock_checkpoint_if_due(void);
 
+/**
+ * 校时上报（doc/05 §5.3）：把设备本地墙钟补报给服务端。
+ *
+ * **只能在 net worker（Core 0）里调用** —— 里面是阻塞式 HTTP。
+ * UI（Core 1）只负责「标记待上报」，由 net worker 联网后补发。
+ *
+ * 服务端只存**副本**（设备 RTC + NVS 才是权威，doc/04 §1.3）：
+ * 上报失败不影响设备本地校时结果，下一次再试。
+ */
+bool net_clock_report_pending(void);
+
 /** 重试 NTP 校时（熔断态下用来解除熔断）。timeout_ms = 本次等待上限。 */
 bool net_clock_retry_sync(uint32_t timeout_ms);
 /**

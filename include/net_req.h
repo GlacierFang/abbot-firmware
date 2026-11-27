@@ -31,6 +31,8 @@ extern "C" {
 #define NR_PATH_SOLVE     "/api/v1/study/solve"
 #define NR_PATH_VOICE     "/api/v1/study/voice"
 #define NR_PATH_OTA_CHECK "/api/v1/ota/check"
+/* 设备上报本地墙钟（手动校时记账，doc/05 §5.3）。 */
+#define NR_PATH_CLOCK     "/api/v1/device/clock"
 
 #define NR_HTTP_TIMEOUT_MS 20000
 
@@ -142,6 +144,19 @@ int nr_build_bootstrap_plain(const char *device_id, const char *fw_version,
                              const char *local_packs_json, const char *local_books_json,
                              const char *city,
                              char *out, size_t out_cap);
+
+/**
+ * `POST /api/v1/device/clock` 明文（手动校时上报，doc/05 §5.3）。
+ *
+ *  - `epoch`：Unix 秒（**UTC 时刻**）
+ *  - `local_time`：`"YYYY-MM-DDTHH:MM:SS"`（**UTC+8 墙钟**）
+ *  - `source`：`"manual"`（用户手动校时）/ `"ntp"`（在线校时）
+ *
+ * 服务端只把这份墙钟存成**副本**（设备自己的 RTC + NVS 才是权威，doc/04 §1.3）；
+ * 上报失败不影响设备本地校时结果。
+ */
+int nr_build_clock_plain(long long epoch, const char *local_time, const char *source,
+                         char *out, size_t out_cap);
 
 /**
  * 解析 `/config/profile.json`，取学段与配额基准。

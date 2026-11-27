@@ -298,6 +298,55 @@ static void test_bootstrap_plain(void)
     free(buf);
 }
 
+static void test_clock_plain(void)
+{
+    printf("[5d] 校时上报明文组装（doc/05 §5.3）\n");
+
+    /* 手动校时：epoch + UTC+8 墙钟 + source="manual" */
+    int need = nr_build_clock_plain(1795494600LL, "2026-11-24T20:30:00", "manual",
+                                    NULL, 0);
+    CHECK(need > 0, "能算出所需长度");
+    char *buf = (char *)malloc((size_t)need);
+    if (buf == NULL) {
+        CHECK(0, "分配缓冲区");
+        return;
+    }
+    int rc = nr_build_clock_plain(1795494600LL, "2026-11-24T20:30:00", "manual",
+                                  buf, (size_t)need);
+    CHECK(rc == need, "返回长度应与预测量一致");
+    CHECK_STR(buf,
+              "{\"epoch\":1795494600,\"local_time\":\"2026-11-24T20:30:00\","
+              "\"source\":\"manual\"}",
+              "校时上报明文");
+    free(buf);
+
+    /* NTP 校时：source="ntp" */
+    need = nr_build_clock_plain(1795498200LL, "2026-11-24T21:30:00", "ntp", NULL, 0);
+    buf = (char *)malloc((size_t)need);
+    if (buf == NULL) {
+        CHECK(0, "分配缓冲区（ntp）");
+        return;
+    }
+    nr_build_clock_plain(1795498200LL, "2026-11-24T21:30:00", "ntp", buf, (size_t)need);
+    CHECK_STR(buf,
+              "{\"epoch\":1795498200,\"local_time\":\"2026-11-24T21:30:00\","
+              "\"source\":\"ntp\"}",
+              "校时上报明文（ntp）");
+    free(buf);
+
+    /* 参数缺失 -> 失败，不许静默拼出半截 JSON */
+    CHECK(nr_build_clock_plain(1795494600LL, NULL, "manual", NULL, 0) < 0,
+          "local_time 为空时返回失败");
+    CHECK(nr_build_clock_plain(1795494600LL, "2026-11-24T20:30:00", NULL, NULL, 0) < 0,
+          "source 为空时返回失败");
+
+    /* 缓冲区不够 -> -2（溢出），不许静默截断 */
+    char small[8];
+    CHECK(nr_build_clock_plain(1795494600LL, "2026-11-24T20:30:00", "manual",
+                               small, sizeof small) == -2,
+          "缓冲区不足时返回溢出码");
+}
+
 static void test_json_get(void)
 {
     printf("[6] JSON 取值\n");
@@ -521,6 +570,7 @@ int main(void)
     test_voice_plain();
     test_register_plain();
     test_bootstrap_plain();
+    test_clock_plain();
     test_json_get();
     test_http_response();
     test_solve_result();

@@ -370,6 +370,40 @@ int nr_build_bootstrap_plain(const char *device_id, const char *fw_version,
     return (int)(sb.len + 1);
 }
 
+static void fill_clock_plain(nr_sb_t *sb, long long epoch, const char *local_time,
+                             const char *source)
+{
+    sb_putc(sb, '{');
+    sb_printf(sb, "\"epoch\":%lld", epoch);
+    sb_puts(sb, ",\"local_time\":");
+    sb_json_str(sb, local_time);
+    sb_puts(sb, ",\"source\":");
+    sb_json_str(sb, source);
+    sb_putc(sb, '}');
+}
+
+int nr_build_clock_plain(long long epoch, const char *local_time, const char *source,
+                         char *out, size_t out_cap)
+{
+    if (local_time == NULL || source == NULL) {
+        return -1;
+    }
+    if (out == NULL) {
+        nr_sb_t sb;
+        sb_init(&sb, NULL, 0);
+        fill_clock_plain(&sb, epoch, local_time, source);
+        return (int)(sb.len + 1);
+    }
+    nr_sb_t sb;
+    sb_init(&sb, out, out_cap);
+    fill_clock_plain(&sb, epoch, local_time, source);
+    if (sb.overflow) {
+        return -2;
+    }
+    out[sb.len] = '\0';
+    return (int)(sb.len + 1);
+}
+
 int nr_parse_profile(const char *json, size_t len, nr_profile_doc_t *out)
 {
     if (json == NULL || out == NULL) {
