@@ -82,7 +82,7 @@ extern "C" void configTime(long gmtOffset_sec, int daylightOffset_sec,
 static WifiConnState g_wifi_state = WIFI_STATE_DISCONNECTED;
 static char g_device_id[40] = { 0 };
 
-/** HTTP 往返的静态声明（实现见文件后半段，配对流程要先用到）。 */
+/** HTTP 往返的静态声明（实现见文件后半段，自动登记要先用到）。 */
 static bool net_http_exchange(const char *host, const char *method, const char *url,
                               const char *timestamp, const char *signature,
                               const char *body, size_t body_len,
@@ -657,7 +657,7 @@ int8_t net_wifi_get_rssi()
     return (int8_t)WiFi.RSSI();
 }
 
-/* ===================== NTP 与配对 ===================== */
+/* ===================== NTP 与登记 ===================== */
 
 static bool net_sync_ntp_time_ms(uint32_t timeout_ms)
 {
@@ -691,7 +691,7 @@ bool net_clock_retry_sync(uint32_t timeout_ms)
 /**
  * 从「明文信封」应答里取出 `device_secret` 并写入 NVS。
  *
- * 配对与自动登记的应答形状完全一致（payload 是明文 JSON 串，内含
+ * 自动登记的应答形状：payload 是明文 JSON 串，内含
  * `device_secret` 的 64 位 Hex），所以两条路径共用这一段解析。
  *
  * 返回 true = 密钥已落 NVS。
@@ -737,37 +737,6 @@ static bool net_post_plain(const char *api_path, const char *plain, size_t plain
         *out_resp_len = resp_len;
     }
     return true;
-}
-
-bool net_pair_with_code(const char *six_digit_code)
-{
-    if (six_digit_code == NULL || strlen(six_digit_code) != 6) {
-        return false;
-    }
-
-    int need = nr_build_pair_plain(net_device_id(), six_digit_code, NULL, 0);
-    if (need <= 0) {
-        return false;
-    }
-    char *plain = (char *)malloc((size_t)need);
-    if (plain == NULL) {
-        return false;
-    }
-    if (nr_build_pair_plain(net_device_id(), six_digit_code, plain, (size_t)need) < 0) {
-        free(plain);
-        return false;
-    }
-
-    size_t resp_len = 0;
-    bool ok = net_post_plain(NR_PATH_PAIR, plain, strlen(plain), &resp_len) &&
-              net_store_secret_from_plain_reply(resp_len);
-    free(plain);
-    if (ok) {
-        Serial.printf("[%s] 配对成功，密钥已入 NVS\n", NET_TAG);
-    } else {
-        Serial.printf("[%s] 配对失败\n", NET_TAG);
-    }
-    return ok;
 }
 
 bool net_is_paired(void)
@@ -967,7 +936,7 @@ static bool net_http_exchange(const char *host, const char *method, const char *
 
 
 /**
- * 把一张拍题请求入队（断网 / 未配对 / 云端忙时用）。
+ * 把一张拍题请求入队（断网 / 未登记 / 云端忙时用）。
  *
  * **关联的 JPG 已经在 TF 卡上了** —— 相机任务拍完就落盘（doc/04 §3.5 命名法），
  * 本函数只负责把「这张图待补传」记进索引，不重复写一遍图。
@@ -976,7 +945,7 @@ static bool net_http_exchange(const char *host, const char *method, const char *
  * （doc/04 §3.5 的媒体垃圾文件清理铁律：索引里没有的条目，文件也不能留）。
  */
 /**
- * 把一条语音请求入队（断网 / 未配对 / 云端忙时用）。
+ * 把一条语音请求入队（断网 / 未登记 / 云端忙时用）。
  *
  * 与拍题同构：**PCM 已经在 TF 卡上了**（录音端落盘后把路径带进来），
  * 本函数只负责把「这段音频待补传 + 当时的上下文」记进索引。
@@ -995,7 +964,7 @@ int net_cards_load(const char *pack_id, card_pack_t *out)
      */
     uint8_t secret[NC_SECRET_LEN];
     if (!net_load_secret(secret)) {
-        return CARDS_ERR_KEY;   /* 还没接入学习助手 */
+        return CARDS_ERR_KEY;   /* 云端还没接上 */
     }
     return cards_load(pack_id, secret, out);
 }

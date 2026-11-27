@@ -53,7 +53,7 @@ int net_dispatch(const net_request_t *req, char **out_resp_json)
             net_sync_pending_assets(resp, strlen(resp));
         } else {
             /*
-             * 心跳没通（断网 / 未配对）：给 UI 一份**带 offline 标记的空应答**。
+             * 心跳没通（断网 / 未登记）：给 UI 一份**带 offline 标记的空应答**。
              * UI 据此切到 TF 卡上的本地快照兜底（而不是把空数据当新数据）。
              * 标记是固件内部的约定，服务端不会返回这个字段。
              */
@@ -71,10 +71,6 @@ int net_dispatch(const net_request_t *req, char **out_resp_json)
         net_set_city(req->city);
         ok = true;
         biz = 0;
-        break;
-    case NET_OP_PAIR:
-        ok = net_pair_with_code(req->pair_code);
-        biz = ok ? 0 : -1;
         break;
     case NET_OP_REGISTER:
         /* 自动登记：设备自报身份，网关幂等签发密钥（doc/04 §1.2） */

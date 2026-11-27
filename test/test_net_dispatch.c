@@ -36,7 +36,6 @@ typedef enum {
     CALL_SOLVE,
     CALL_VOICE,
     CALL_BOOTSTRAP,
-    CALL_PAIR,
     CALL_PROFILE,
     CALL_REGISTER,
     CALL_ENQUEUE,
@@ -50,7 +49,6 @@ static char g_last_session[32];
 static char g_last_page[16];
 static char g_last_pack[24];
 static char g_last_card[24];
-static char g_last_code[8];
 static char g_last_media[72];   /* 媒体路径（TF 卡路径上限 72） */
 static char g_last_context[64]; /* 语音上下文三元组（PAGE|pack|card） */
 static char g_last_stage[16];
@@ -98,7 +96,7 @@ bool net_study_solve(const char *session_id, const char *pack_id, const char *ca
     if (out_resp_json != NULL) {
         *out_resp_json = make_resp();
     }
-    /* g_solve_ok 用来模拟「传输失败」（断网 / 未配对）——
+    /* g_solve_ok 用来模拟「传输失败」（断网 / 未登记）——
        调度层看到失败就该把这条入队，而不是丢掉用户的拍照。 */
     return g_solve_ok;
 }
@@ -133,13 +131,6 @@ bool net_sync_bootstrap_auto(int *out_biz_code, char **out_resp_json)
     if (out_resp_json != NULL) {
         *out_resp_json = make_resp();
     }
-    return true;
-}
-
-bool net_pair_with_code(const char *six_digit_code)
-{
-    g_last_call = CALL_PAIR;
-    snprintf(g_last_code, sizeof g_last_code, "%s", six_digit_code ? six_digit_code : "");
     return true;
 }
 
@@ -219,7 +210,6 @@ static void reset(void)
     g_last_page[0] = '\0';
     g_last_pack[0] = '\0';
     g_last_card[0] = '\0';
-    g_last_code[0] = '\0';
     g_last_stage[0] = '\0';
     g_last_city[0] = '\0';
     g_last_year = 0;
@@ -288,20 +278,10 @@ int main(void)
     free(resp);
     resp = NULL;
 
-    /* 4. 配对 */
-    reset();
-    memset(&req, 0, sizeof req);
-    req.op = NET_OP_PAIR;
-    snprintf(req.pair_code, sizeof req.pair_code, "123456");
-    rc = net_dispatch(&req, &resp);
-    CHECK(g_last_call == CALL_PAIR, "op=配对 路由到 pair");
-    CHECK(strcmp(g_last_code, "123456") == 0, "配对码原样传下去");
-    CHECK(rc == 0, "配对成功返回 0");
-    CHECK(resp == NULL, "配对不产生业务明文");
     free(resp);
     resp = NULL;
 
-    /* 5. 自动登记（无码配对） */
+    /* 5. 自动登记（零码） */
     reset();
     memset(&req, 0, sizeof req);
     req.op = NET_OP_REGISTER;

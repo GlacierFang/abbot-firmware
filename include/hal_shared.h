@@ -104,7 +104,7 @@ typedef struct {
  */
 #define UI_PAIR_STATE_NONE     0 /* 还没开始 */
 #define UI_PAIR_STATE_PENDING  1 /* 正在接入（已联网，登记进行中） */
-#define UI_PAIR_STATE_READY    2 /* 已接入（密钥已拿到） */
+#define UI_PAIR_STATE_READY    2 /* 已接入云端（密钥已拿到） */
 #define UI_PAIR_STATE_FAILED   3 /* 这次没接上，稍后自动重试 */
 
 QueueHandle_t hal_joystick_queue(void);

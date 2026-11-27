@@ -52,9 +52,11 @@ static int32_t s_last_biz = -1;
 static ui_page_t s_reminder_restore_page = PAGE_HOME;
 static bool s_reminder_had_page = false;
 
-/* 是否已配对（读 /config/profile.json）：未配对时端云功能给温和提示，
+/* 是否已登记（读 /config/profile.json）：未登记时端云功能给温和提示，
  * 本地页（番茄钟/设置/书架/课表）照常可用。 */
 static int s_paired = 0;
+/* 已看过的 Wi-Fi 连接结果序号 —— 用来发现「刚刚连上」并跳首页。 */
+static uint32_t s_wifi_result_seq = 0;
 
 /* 设备接入状态（自动登记，doc/04 §1.2）：由网络任务经队列投来。 */
 static int s_pair_state = UI_PAIR_STATE_NONE;
@@ -469,7 +471,12 @@ static void ui_page_action(ui_page_t page)
         case 0:
             /* 拍题导学要靠云端解题：没配对时先给一句温和提示 */
             if (!s_paired) {
-                ui_toast("还没连上学习助手，请检查一下网络");
+                char ssid[33] = { 0 };
+                if (net_wifi_get_saved_ssid(ssid, sizeof ssid) && ssid[0] != '\0') {
+                    ui_toast("学习助手还没接上，稍后自动重试");
+                } else {
+                    ui_toast("还没联网，先连上网再试");
+                }
                 break;
             }
             ui_router_go(PAGE_CAMERA);
@@ -554,19 +561,6 @@ static void ui_page_action(ui_page_t page)
         switch (idx) {
         case 0:
             ui_router_go(PAGE_WIFI_SCAN);
-            break;
-        case 1:
-            /* 重新尝试接入：UI 只发请求，实际网络活儿由网络任务做 */
-            {
-                net_request_t req = {};
-                req.op = NET_OP_REGISTER;
-                if (hal_net_request_queue() == NULL ||
-                    xQueueSend(hal_net_request_queue(), &req, 0) != pdTRUE) {
-                    ui_toast("网络还在准备中，等一下就好");
-                } else {
-                    ui_toast("正在重新接入");
-                }
-            }
             break;
         default:
             break;
@@ -1071,6 +1065,7 @@ void ui_router_init(void)
     bool has_saved_wifi = net_wifi_get_saved_ssid(saved_ssid, sizeof saved_ssid) &&
                          saved_ssid[0] != '\0';
     bool paired = net_is_paired();
+    s_wifi_result_seq = net_wifi_connect_result_seq();
     s_current = (!has_saved_wifi && !paired) ? PAGE_OOBE : PAGE_HOME;
     ui_show_page(s_current);
 }
@@ -1112,6 +1107,22 @@ void ui_router_tick(void)
     /* Wi-Fi 扫描页：轮询真扫描结果与连接状态（doc/03 §五 第 11 页） */
     if (s_current == PAGE_WIFI_SCAN) {
         ui_pages_wifi_scan_tick(now);
+    }
+    /*
+     * 配网成功**直接进功能列表页**（不留在列表页等家长长按退出）。
+     * 连接结果由 net 层给：序号变了就是有新结果；只在「此刻正停在列表页」
+     * 且结果为成功时跳首页。基线每 tick 都跟着走 —— 否则开机自动连接的旧结果
+     * 会在用户后来打开列表页时把他弹回首页。
+     */
+    {
+        uint32_t rseq = net_wifi_connect_result_seq();
+        if (rseq != s_wifi_result_seq) {
+            bool ok = (net_wifi_connect_result() == 1);
+            s_wifi_result_seq = rseq;
+            if (ok && s_current == PAGE_WIFI_SCAN) {
+                ui_router_go(PAGE_HOME);
+            }
+        }
     }
     /* 键盘页：60 秒无操作自动退出（doc/03 §五 第 12 页） */
     if (s_current == PAGE_KEYBOARD && ui_pages_keyboard_tick(now)) {
@@ -1259,7 +1270,7 @@ void ui_router_handle_cards(card_pack_t *pack, int rc)
         heap_caps_free(pack);
         /* 文案温和，且**不出现加密、密钥这类技术词**（doc/03 §四 铁律） */
         if (rc == CARDS_ERR_KEY) {
-            ui_toast("还没接入学习助手，先连上网再试");
+            ui_toast("学习助手还没接上，稍后自动重试");
         } else if (rc == CARDS_ERR_NOTFOUND) {
             ui_toast("这个学科包还没下载好");
         } else {

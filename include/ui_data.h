@@ -251,7 +251,7 @@ int ui_data_weather_cache_get(char *out, size_t cap, uint32_t *out_len);
 int ui_data_weather_cache_set(const char *text, uint32_t len);
 
 /* ===================== 档案（离线降级用） ===================== */
-/** 读 `/config/profile.json` 里的配对标志。读不到时按未配对处理。 */
+/** 读 `/config/profile.json` 里的登记标志。读不到时按未登记处理。 */
 int ui_data_read_paired(int *out_paired);
 
 #ifdef __cplusplus

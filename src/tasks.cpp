@@ -382,10 +382,10 @@ static void task_net_worker(void *arg)
     net_sync_ntp_time();
 
     /*
-     * 自动登记（无码配对，doc/04 §1.2）：
+     * 自动登记（零码，doc/04 §1.2）：
      * 联网后如果本机还没有密钥，就自报身份向网关登记一次。
      * **设备侧零输入** —— 不弹码、不进虚拟键盘、不要求家长敲任何东西。
-     * 没接上就**自动重试**（下方主循环里做），不把家长拖进配对流程。
+     * 没接上就**自动重试**（下方主循环里做），不把家长拖进登记流程。
      */
     bool paired = net_is_paired();
     uint32_t next_register_ms = 0;
@@ -481,7 +481,7 @@ static void task_net_worker(void *arg)
             cmd.payload_len = resp ? (uint32_t)strlen(resp) : 0;
             xQueueSend(hal_ui_command_queue(), &cmd, 0);
 
-            /* 手动「重新尝试接入」可能已经登记成功 —— 刷新本地标志，
+            /* 自动登记可能已经成功 —— 刷新本地标志，
                免得主循环又去重复登记（网关幂等，但没必要白跑一趟）。 */
             if (!paired) {
                 paired = net_is_paired();

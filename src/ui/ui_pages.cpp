@@ -422,7 +422,6 @@ static lv_obj_t *ui_make_list_item(lv_obj_t *parent, const char *text, const cha
  *
  * 首屏 = **品牌区**（设计稿整屏底图，见 src/ui/wifi_bg.c）+ 下方两个选项：
  *   - 「连接 Wi-Fi 网络」→ PAGE_WIFI_SCAN
- *   - 「重新尝试接入」→ 留在首屏，重新发起接入
  *
  * 品牌区按设计稿原样呈现（不重画标题、不改文案），这一层只负责交互。
  * 接入进度由 `ui_pages_set_pair_state()` 刷新，UI 不自己计时、不发网络请求。
@@ -459,16 +458,13 @@ static void ui_build_oobe(lv_obj_t *content)
     lv_obj_set_style_bg_opa(content, LV_OPA_TRANSP, 0);
     lv_obj_set_style_bg_opa(s_pages[PAGE_OOBE].hint, LV_OPA_TRANSP, 0);
 
-    /* 状态行：等待连接网络 → 接入中… → 已接入
+    /* 状态行：等待连接网络 → 连接中… → 已联网
      * （字库里没有 ● / ✓，用字库已有的 · 代替） */
     s_oobe_state_label = ui_make_label(content, "等待连接网络", false);
     lv_obj_set_pos(s_oobe_state_label, 8, 268);
 
     lv_obj_t *item1 = ui_make_list_item(content, "> [ 连接 Wi-Fi 网络 ]", NULL);
     lv_obj_set_pos(item1, 8, 304);
-
-    lv_obj_t *item2 = ui_make_list_item(content, "  [ 重新尝试接入 ]", NULL);
-    lv_obj_set_pos(item2, 8, 344);
 }
 
 /** 按接入状态刷新 OOBE 状态行（文案温和，不出现任何技术术语）。 */
@@ -480,13 +476,13 @@ void ui_pages_set_pair_state(int state)
     const char *text;
     switch (state) {
     case UI_PAIR_STATE_PENDING:
-        text = "· 接入中…";
+        text = "· 连接中…";
         break;
     case UI_PAIR_STATE_READY:
-        text = "· 已接入";
+        text = "· 已联网";
         break;
     case UI_PAIR_STATE_FAILED:
-        text = "· 暂时没接上，会自动再试一次";
+        text = "· 暂时没连上，会自动再试一次";
         break;
     default:
         text = "等待连接网络";

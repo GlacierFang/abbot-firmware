@@ -280,40 +280,6 @@ int nr_build_voice_plain(const nr_profile_t *prof, const char *context_page,
     return (int)(sb.len + 1);
 }
 
-int nr_build_pair_plain(const char *device_id, const char *pair_code,
-                        char *out, size_t out_cap)
-{
-    if (device_id == NULL || pair_code == NULL) {
-        return -1;
-    }
-    nr_sb_t probe;
-    sb_init(&probe, NULL, 0);
-    sb_puts(&probe, "{\"device_id\":");
-    sb_json_str(&probe, device_id);
-    sb_puts(&probe, ",\"pair_code\":");
-    sb_json_str(&probe, pair_code);
-    sb_puts(&probe, "}");
-
-    if (out == NULL) {
-        return (int)(probe.len + 1);
-    }
-    if (out_cap < probe.len + 1) {
-        return -2;
-    }
-    nr_sb_t sb;
-    sb_init(&sb, out, out_cap);
-    sb_puts(&sb, "{\"device_id\":");
-    sb_json_str(&sb, device_id);
-    sb_puts(&sb, ",\"pair_code\":");
-    sb_json_str(&sb, pair_code);
-    sb_puts(&sb, "}");
-    if (sb.overflow) {
-        return -2;
-    }
-    out[sb.len] = '\0';
-    return (int)(sb.len + 1);
-}
-
 int nr_build_register_plain(const char *device_id, const char *fw_version,
                             char *out, size_t out_cap)
 {

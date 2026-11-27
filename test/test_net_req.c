@@ -220,21 +220,6 @@ static void test_voice_plain(void)
     free(buf);
 }
 
-static void test_pair_plain(void)
-{
-    printf("[5] pair 明文组装\n");
-    int need = nr_build_pair_plain("esp32s3_a1b2c3d4", "123456", NULL, 0);
-    char *buf = (char *)malloc((size_t)need);
-    if (buf == NULL) {
-        CHECK(0, "分配缓冲区");
-        return;
-    }
-    nr_build_pair_plain("esp32s3_a1b2c3d4", "123456", buf, (size_t)need);
-    CHECK_STR(buf, "{\"device_id\":\"esp32s3_a1b2c3d4\",\"pair_code\":\"123456\"}",
-              "pair 明文");
-    free(buf);
-}
-
 static void test_register_plain(void)
 {
     printf("[5b] register 明文组装（自动登记）\n");
@@ -534,7 +519,6 @@ int main(void)
     test_solve_plain();
     test_solve_plain_no_pcm();
     test_voice_plain();
-    test_pair_plain();
     test_register_plain();
     test_bootstrap_plain();
     test_json_get();

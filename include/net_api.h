@@ -4,7 +4,7 @@
  * 与 `include/net_client.h` 的分工（doc/04 §六）：
  *   - net_client.h ：纯 C 安全信封原语（SHA-256 / HMAC / AES-128-CTR / Base64 / 签名 / 验签 / 解密）。
  *                    **不依赖 Arduino.h**，同一份实现可在固件与主机侧 native 测试中编译。
- *   - net_api.h    ：本文件。Wi-Fi 连接、NTP 校时、配对握手、加密 POST 等**业务请求层**接口，
+ *   - net_api.h    ：本文件。Wi-Fi 连接、NTP 校时、登记握手、加密 POST 等**业务请求层**接口，
  *                    由 `task_net_worker` 调用。
  *
  * 业务明文的**字段形状真相源是 doc/05 §5.1**，本层不得自行改变字段语义。
@@ -30,9 +30,8 @@ extern "C" {
 #define NET_OP_SOLVE     1 /* 拍题（带图） */
 #define NET_OP_VOICE     2 /* 语音问答 */
 #define NET_OP_BOOTSTRAP 3 /* 心跳同步 */
-#define NET_OP_PAIR      4 /* 配对 */
 #define NET_OP_PROFILE   5 /* 档案同步（学段/配额基准，由存储任务读 TF 卡后投递） */
-#define NET_OP_REGISTER  6 /* 自动登记（无码配对，doc/04 §1.2） */
+#define NET_OP_REGISTER  6 /* 自动登记（零码，doc/04 §1.2） */
 #define NET_OP_CARDS    7 /* 学科卡片包（本地解密 + 解析） */
 #define NET_OP_OTA_CHECK 8 /* 固件升级检查（doc/04 固件升级章节） */
 #define NET_OP_CITY     9 /* 设置城市（UI 核写入 net 层缓存，随下一次心跳上报） */
@@ -62,7 +61,6 @@ typedef struct {
     char context_page[16]; /* NET_OP_VOICE：当前页面 */
     char pack_id[24];      /* NET_OP_VOICE / NET_OP_SOLVE / NET_OP_CARDS：学科包 id */
     char card_id[24];      /* NET_OP_VOICE / NET_OP_SOLVE：当前卡片 id */
-    char pair_code[8];     /* NET_OP_PAIR：6 位配对码 */
     char edu_stage[16];    /* NET_OP_PROFILE：学段 */
     int enrollment_year;   /* NET_OP_PROFILE：入学年 */
     int remaining_quota;   /* NET_OP_PROFILE：本地估算的剩余配额（仅供对账） */
@@ -119,7 +117,7 @@ void net_set_city(const char *city);
 /** 取当前上报用的城市名（没设置过返回空串）。 */
 const char *net_get_city(void);
 
-/** 设备唯一标识（`esp32s3_xxxxxxxx`），心跳与配对用。 */
+/** 设备唯一标识（`esp32s3_xxxxxxxx`），心跳与登记用。 */
 const char *net_device_id(void);
 
 /* ===================== Wi-Fi ===================== */
@@ -209,7 +207,7 @@ void net_wifi_request_shutdown(void);
 /** 网络任务调用：执行挂起的停 Wi-Fi 请求。返回 true = 本轮真的关了射频。 */
 bool net_wifi_service_shutdown(void);
 
-/* ===================== 配对与时间 ===================== */
+/* ===================== 登记与时间 ===================== */
 bool net_sync_ntp_time(void);
 
 /* ---------- 时钟熔断与低磨损检查点（doc/04 §1.3） ---------- */
@@ -237,10 +235,8 @@ bool net_clock_retry_sync(uint32_t timeout_ms);
 /**
  * 旧路径：网页端生成 6 位码、设备敲码换密钥。**默认不暴露**，仅在自动登记不可用时兜底。
  */
-bool net_pair_with_code(const char *six_digit_code);
-
 /**
- * 自动登记（无码配对，doc/04 §1.2）。
+ * 自动登记（零码，doc/04 §1.2）。
  *
  * 设备联网后用芯片 MAC 派生的 `device_id`（`esp32s3_<mac8>`）向网关自报身份，
  * 网关幂等签发 `device_secret` 并返回；本函数把密钥写进 NVS。

@@ -88,7 +88,7 @@ typedef struct {
 #define CARDS_ERR_IO      -3 /* 底层读写失败 */
 #define CARDS_ERR_NOTFOUND -4 /* 包或文件不存在 */
 #define CARDS_ERR_CORRUPT -5 /* 索引 / 密文损坏 */
-#define CARDS_ERR_KEY     -6 /* 没有可用密钥（未配对） */
+#define CARDS_ERR_KEY     -6 /* 没有可用密钥（未登记） */
 
 /* ---------- 纯逻辑层（主机侧可单测） ---------- */
 
