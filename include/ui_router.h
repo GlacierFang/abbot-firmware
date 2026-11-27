@@ -67,7 +67,7 @@ typedef enum {
 /* 抢占优先级高 -> 低。同一时刻只有最高优先级浮层可见。 */
 typedef enum {
     OVERLAY_NONE = 0,
-    OVERLAY_REMINDER,       /* 高：课表提醒弹窗 */
+    OVERLAY_REMINDER,       /* 高：错误/状态提示卡片（承载 ui_error 的卡片级错误） */
     OVERLAY_RECORDING,      /* 中：语音录音浮层 */
     OVERLAY_TOAST,          /* 低：底部 2 秒提示条，严禁覆盖上面两层 */
     OVERLAY_COUNT

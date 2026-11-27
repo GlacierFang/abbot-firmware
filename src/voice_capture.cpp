@@ -285,7 +285,7 @@ void voice_capture_audio_poll(void)
         }
         /* 有效时长不够 1.0 秒 → 直接丢弃，不入队（doc/03 §3.1 打断铁律）。 */
         if (s_samples >= VOICE_INTERRUPT_MIN_SAMPLES) {
-            abort_recording("提醒打断了录音，请再说一次");
+            abort_recording("提示打断了录音，请再说一次");
         } else {
             discard_recording();
         }

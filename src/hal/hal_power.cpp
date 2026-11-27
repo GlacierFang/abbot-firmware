@@ -98,7 +98,8 @@ hal_status_t hal_power_enter_light_sleep(void)
     /* 背光先关，进入浅休眠后外设电源域掉电，唤醒需重建 */
     hal_display_set_backlight(0);
 
-    /* GPIO 0 下压唤醒（低有效）+ RTC 定时唤醒（课程闹钟） */
+    /* GPIO 0 下压唤醒（低有效）+ 60 秒周期唤醒
+     * —— **无课程闹钟语义**：课表只是查看能力，不做 RTC 课程闹钟。 */
     esp_sleep_enable_ext0_wakeup((gpio_num_t)WAKE_GPIO, 0);
     esp_sleep_enable_timer_wakeup(60ULL * 1000000ULL);
 

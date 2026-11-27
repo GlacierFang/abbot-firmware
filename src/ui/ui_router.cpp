@@ -283,7 +283,7 @@ ui_overlay_t ui_overlay_push(ui_overlay_t overlay)
         return ui_overlay_top();
     }
     /*
-     * 提醒弹窗打断录音（doc/03 §3.1）：
+     * 提示卡片打断录音（doc/03 §3.1）：
      * 录音一律丢弃（离线队列已按 2026-11-26 决定删除，不再自动存起来等补传）。
      * 这里只置标志，实际释放缓冲在 Core 0 完成（UI 核不碰 PSRAM）。
      */
@@ -897,7 +897,7 @@ void ui_router_handle_gesture(ui_gesture_t gesture)
     ui_overlay_t top = ui_overlay_top();
     if (top == OVERLAY_REMINDER) {
         if (gesture == GESTURE_CLICK) {
-            /* 短按关闭提醒并恢复打断前的页面 */
+            /* 短按关闭提示卡片并恢复打断前的页面 */
             ui_overlay_pop(OVERLAY_REMINDER);
             if (s_reminder_had_page) {
                 s_reminder_had_page = false;

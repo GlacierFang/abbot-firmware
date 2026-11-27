@@ -105,7 +105,7 @@ hal_status_t hal_joystick_poll(void);                              // 50Hz 调�
 /* ---------- hal_power：MAX17043 电量计与低功耗 ---------- */
 hal_status_t hal_power_init(void);
 hal_status_t hal_power_read_battery(float *out_volts, uint8_t *out_soc);  // 持 g_i2c_bus_mutex
-hal_status_t hal_power_enter_light_sleep(void);                    // GPIO0 / RTC 闹钟唤醒
+hal_status_t hal_power_enter_light_sleep(void);                    // GPIO0 唤醒 + 60 秒周期唤醒（无课程闹钟）
 hal_status_t hal_power_enter_deep_sleep(void);
 
 /* ---------- 休眠唤醒后的外设恢复（02 第 3.6 节强制） ---------- */

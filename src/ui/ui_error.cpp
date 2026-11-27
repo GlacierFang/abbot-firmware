@@ -68,7 +68,7 @@ bool ui_show_friendly_error(ui_error_code_t code)
     case ERR_SHOW_CARD:
     case ERR_SHOW_RESIDENT:
     case ERR_SHOW_FULLSCREEN:
-        /* 提醒弹窗承载: 短按关闭后恢复原页 (doc/03 §3.1) */
+        /* 提示卡片承载: 短按关闭后恢复原页 (doc/03 §3.1) */
         ui_overlay_set_text(OVERLAY_REMINDER, text);
         ui_overlay_push(OVERLAY_REMINDER);
         return true;
