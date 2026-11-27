@@ -1056,9 +1056,23 @@ void ui_router_init(void)
 {
     lv_obj_t *scr = lv_scr_act();
     ui_pages_init(scr);
-    s_current = PAGE_OOBE;
     s_in_book = false;
-    ui_show_page(PAGE_OOBE);
+
+    /* 首屏 = 首次开机引导，触发条件按 doc/03 §0：
+     * **NVS 里没有已保存 Wi-Fi，且未登记** 才进首屏；
+     * 已配过网的设备开机直接进首页（要换网走「系统设置 → 无线网络」）。
+     *
+     * 判据都读 NVS，不碰网络任务，UI 任务里读不阻塞：
+     *   net_wifi_get_saved_ssid() —— NVS 的 ssid（连过一次就写进去）
+     *   net_is_paired()           —— NVS 的 device_secret（网关注册成功过）
+     * 两者都不成立 = 从没配过网的裸机，进首屏。
+     */
+    char saved_ssid[33] = { 0 };
+    bool has_saved_wifi = net_wifi_get_saved_ssid(saved_ssid, sizeof saved_ssid) &&
+                         saved_ssid[0] != '\0';
+    bool paired = net_is_paired();
+    s_current = (!has_saved_wifi && !paired) ? PAGE_OOBE : PAGE_HOME;
+    ui_show_page(s_current);
 }
 
 void ui_router_tick(void)
