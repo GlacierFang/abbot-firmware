@@ -423,6 +423,10 @@ static void task_net_worker(void *arg)
         net_wifi_connect_poll();
         net_wifi_service_scan();
 
+        /* 顶栏用的设备状态快照（Wi-Fi 态 / 电量）—— 在网络任务里采集，
+         * UI 核只读副本（电量走 I2C，与摄像头共用总线，不能在 UI 核读）。 */
+        net_poll_device_status();
+
         if (got) {
             hal_power_note_activity();
 

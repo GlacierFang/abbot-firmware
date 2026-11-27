@@ -269,6 +269,88 @@ bool wifi_conn_can_retry(const wifi_conn_state_t *st)
     return st->attempt < st->max_attempt;
 }
 
+/* ===================== 顶栏 Wi-Fi 指示（纯逻辑） ===================== */
+
+/**
+ * 按 UTF-8 字符边界截断，超长加省略号。不劈开汉字。
+ *
+ * 计数单位是**字符**不是字节 —— 模拟屏那份同名逻辑也按字符数截，
+ * 两边口径必须一致，否则中文 SSID 会截出不同长度。
+ */
+static void wm_clip_utf8(char *out, size_t cap, const char *src, size_t max_chars)
+{
+    size_t n = 0;     /* 已确认合法的字节数（始终落在字符边界上） */
+    size_t chars = 0; /* 已数到的字符数 */
+    int truncated = 0;
+
+    while (src[n] != '\0') {
+        unsigned char c = (unsigned char)src[n];
+        size_t clen = 1;
+        if (c >= 0xF0u) {
+            clen = 4;
+        } else if (c >= 0xE0u) {
+            clen = 3;
+        } else if (c >= 0xC0u) {
+            clen = 2;
+        }
+        if (chars + 1 > max_chars) {
+            truncated = 1;
+            break;
+        }
+        n += clen;
+        chars++;
+    }
+    if (src[n] != '\0') {
+        truncated = 1;
+    }
+
+    if (cap == 0) {
+        return;
+    }
+    if (n > cap - 1) {
+        n = cap - 1;
+    }
+    memcpy(out, src, n);
+    out[n] = '\0';
+    if (truncated) {
+        size_t used = n;
+        if (used + strlen("\xE2\x80\xA6") + 1 <= cap) {
+            memcpy(out + used, "\xE2\x80\xA6", 4);
+        }
+    }
+}
+
+void wifi_model_format_chip(char *out, size_t cap, int state, const char *ssid)
+{
+    if (out == NULL || cap == 0) {
+        return;
+    }
+    out[0] = '\0';
+
+    switch (state) {
+    case WIFI_CHIP_SCANNING:
+        snprintf(out, cap, "WiFi 搜索中");
+        return;
+    case WIFI_CHIP_CONNECTING:
+        snprintf(out, cap, "WiFi 连接中");
+        return;
+    case WIFI_CHIP_CONNECTED:
+        break;
+    default:
+        snprintf(out, cap, "WiFi 未连接");
+        return;
+    }
+
+    /* 已连接：带 SSID，超长截断（顶栏空间有限，列表页才给全名） */
+    if (ssid == NULL || ssid[0] == '\0') {
+        snprintf(out, cap, "WiFi 已连接");
+        return;
+    }
+    char name[48];
+    wm_clip_utf8(name, sizeof(name), ssid, 10);
+    snprintf(out, cap, "WiFi %s", name);
+}
+
 const char *wifi_conn_hint(const wifi_conn_state_t *st)
 {
     if (st == NULL) {

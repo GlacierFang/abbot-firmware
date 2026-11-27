@@ -124,6 +124,27 @@ void wifi_model_format_row(char *out, size_t cap, const WifiApInfo *ap, int conn
 /* 行尾元信息（锁 / 已连 / 已存）—— 右对齐一列, 与左列 SSID 分开排。 */
 void wifi_model_format_meta(char *out, size_t cap, const WifiApInfo *ap, int connected);
 
+/**
+ * 顶栏 Wi-Fi 指示的连接状态。
+ *
+ * 数值刻意与 net 层驱动状态（WIFI_STATE_*）对齐，UI 层可直接透传，
+ * 免掉一层映射 —— 映射表多一处就多一处能写错的地方。
+ */
+typedef enum {
+    WIFI_CHIP_DISCONNECTED = 0,  /**< 未连接 */
+    WIFI_CHIP_SCANNING      = 1,  /**< 搜索中 */
+    WIFI_CHIP_CONNECTING   = 2,  /**< 连接中 */
+    WIFI_CHIP_CONNECTED    = 3   /**< 已连接 */
+} wifi_chip_state_t;
+
+/**
+ * 顶栏 Wi-Fi 指示文案：
+ *   - 未连接 / 搜索中 / 连接中 / 已连接（带 SSID）。
+ *   - SSID 超长按 UTF-8 字符边界截断并加省略号，不劈开汉字。
+ * 例："WiFi 未连接"、"WiFi 搜索中"、"WiFi Home_5G"。
+ */
+void wifi_model_format_chip(char *out, size_t cap, int state, const char *ssid);
+
 #ifdef __cplusplus
 }
 #endif

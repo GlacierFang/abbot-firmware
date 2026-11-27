@@ -57,7 +57,9 @@ static bool s_styles_ready = false;
 typedef struct {
     lv_obj_t *root;
     lv_obj_t *status;
-    lv_obj_t *status_label;
+    lv_obj_t *status_label;       /* 顶栏左格: 天气 */
+    lv_obj_t *status_mid_label;   /* 顶栏中格: Wi-Fi */
+    lv_obj_t *status_right_label; /* 顶栏右格: 电量 */
     lv_obj_t *content;
     lv_obj_t *hint;
 } ui_page_widgets_t;
@@ -199,6 +201,8 @@ static int s_toc_page_cached = -1;                            /* 标题缓存对
 static uint32_t s_reader_history[UI_READER_HISTORY];
 static int s_reader_history_count = 0;
 static lv_obj_t *s_reader_body = NULL;
+static lv_obj_t *s_reader_progress_label = NULL;   /* 阅读进度（内容区左下） */
+static lv_obj_t *s_bookshelf_quota_label = NULL;   /* 今日剩多少分（内容区右上） */
 
 /* ===================== 阅读护栏（doc/07 §2.3 / §2.4） ===================== */
 
@@ -246,6 +250,11 @@ static void ui_styles_init(void)
     lv_style_set_border_color(&s_style_card, UI_C_LINE);
     lv_style_set_pad_all(&s_style_card, UI_PAD);
 
+    /* 字号分档 (2026-11-27): 原来四个样式全是 16px 一档, 层级只能靠位置和留白硬凑。
+     * 现按 doc/03 §11 与 NOTES-WiFi扫描页排版.md 的目标层级接线:
+     *   标题 16 号 / 状态行 12 号 / 列表行 12 号 / 行尾元信息 12 号。
+     * 列表行降到 12px 是为了对齐模拟屏: 信号格 4 个 █ 在 16px 下占 64px,
+     * 在 12px 下只占 48px, SSID 才有空间不被更早截断。 */
     lv_style_init(&s_style_title);
     lv_style_set_text_color(&s_style_title, UI_C_TEXT);
     lv_style_set_text_font(&s_style_title, &ui_font_cn_16);
@@ -279,7 +288,15 @@ static lv_obj_t *ui_make_root(lv_obj_t *parent)
     return root;
 }
 
-static lv_obj_t *ui_make_status(lv_obj_t *root, const char *text, lv_obj_t **out_label)
+/*
+ * 顶栏 = 三格（doc/03 §二 三区骨架）: 左天气 / 中 Wi-Fi / 右电量。
+ *
+ * 三格对所有页面是**同一份内容**（天气来自服务端, Wi-Fi 与电量来自设备自身）,
+ * 所以顶栏不随页面变 —— 页面自己的信息（今日剩多少分 / 读到哪了）画在内容区。
+ *
+ * 坐标按模拟屏 statusBar() 对齐: 左 x=6 / 中 x=120 / 右右对齐到 314。
+ */
+static lv_obj_t *ui_make_status(lv_obj_t *root, ui_page_widgets_t *w)
 {
     lv_obj_t *bar = lv_obj_create(root);
     lv_obj_set_size(bar, 320, UI_STATUS_H);
@@ -290,15 +307,28 @@ static lv_obj_t *ui_make_status(lv_obj_t *root, const char *text, lv_obj_t **out
     lv_obj_set_style_pad_all(bar, 4, 0);
     lv_obj_clear_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *label = lv_label_create(bar);
-    lv_label_set_text(label, text);
-    lv_obj_add_style(label, &s_style_status, 0);
-    lv_obj_align(label, LV_ALIGN_LEFT_MID, 0, 0);
-    if (out_label != NULL) {
-        *out_label = label;
-    }
+    /* 左格：天气（doc/03 §10.1 三态文案，超宽省略号收尾） */
+    w->status_label = lv_label_create(bar);
+    lv_obj_add_style(w->status_label, &s_style_status, 0);
+    lv_obj_set_width(w->status_label, 144);
+    lv_label_set_long_mode(w->status_label, LV_LABEL_LONG_DOT);
+    lv_obj_align(w->status_label, LV_ALIGN_LEFT_MID, 4, 0);
+
+    /* 中格：Wi-Fi 状态（未连接 / 搜索中 / 连接中 / 已连 SSID） */
+    w->status_mid_label = lv_label_create(bar);
+    lv_obj_add_style(w->status_mid_label, &s_style_status, 0);
+    lv_obj_set_width(w->status_mid_label, 160);
+    lv_label_set_long_mode(w->status_mid_label, LV_LABEL_LONG_DOT);
+    lv_obj_align(w->status_mid_label, LV_ALIGN_LEFT_MID, 150, 0);
+
+    /* 右格：电量百分比（低于 15% 转告警色，同模拟屏） */
+    w->status_right_label = lv_label_create(bar);
+    lv_obj_add_style(w->status_right_label, &s_style_status, 0);
+    lv_obj_align(w->status_right_label, LV_ALIGN_RIGHT_MID, -4, 0);
+
     return bar;
 }
+
 
 static lv_obj_t *ui_make_content(lv_obj_t *root)
 {
@@ -516,10 +546,8 @@ static void ui_build_home(lv_obj_t *content)
     lv_obj_align(label, LV_ALIGN_TOP_LEFT, 0, 0);
     s_home_schedule_label = label;
 
-    /* 天气：与服务端心跳应答同步；初始为空态（还没拿到数据） */
-    lv_obj_t *weather = ui_make_label(card, "暂时拿不到天气", false);
-    lv_obj_align(weather, LV_ALIGN_BOTTOM_LEFT, 0, 0);
-    s_home_weather_label = weather;
+    /* 天气不在卡片里 —— 它在顶部状态栏左格（doc/03 §10.1），
+     * 与模拟屏一致：模拟屏的首页卡片也没有天气行。 */
 
     static const char *items[] = {
         "> [ 拍题导学 ]      剩余 8 / 共 10",
@@ -618,6 +646,8 @@ static void ui_build_card_study(lv_obj_t *content)
 static void ui_build_pomodoro(lv_obj_t *content)
 {
     lv_obj_t *time = ui_make_label(content, "25:00", true);
+    /* 大数字用 20px 档（模拟屏是 44px 强调态，固件字库只做到 20px） */
+    lv_obj_set_style_text_font(time, &ui_font_cn_20, 0);
     lv_obj_align(time, LV_ALIGN_CENTER, 0, -20);
     s_pomo_time_label = time;
 
@@ -1537,7 +1567,16 @@ static void ui_build_reader(lv_obj_t *content)
     lv_obj_t *body = ui_make_label(content, "还没有打开书籍", false);
     lv_obj_align(body, LV_ALIGN_TOP_LEFT, 0, 0);
     s_reader_body = body;
+
+    /* 阅读进度画在内容区左下（模拟屏 PAGE_READER 同一位置）——
+     * 顶栏是全局三格，不放页面级信息。 */
+    lv_obj_t *prog = ui_make_label(content, "", false);
+    lv_obj_set_width(prog, 220);
+    lv_obj_set_style_text_align(prog, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_align(prog, LV_ALIGN_BOTTOM_LEFT, 0, -2);
+    s_reader_progress_label = prog;
 }
+
 
 static void ui_build_book_menu(lv_obj_t *content)
 {
@@ -1929,7 +1968,7 @@ void ui_pages_init(lv_obj_t *parent)
     for (i = 0; i < PAGE_COUNT; i++) {
         lv_obj_t *root = ui_make_root(parent);
         s_pages[i].root = root;
-        s_pages[i].status = ui_make_status(root, "                  ", &s_pages[i].status_label);
+        s_pages[i].status = ui_make_status(root, &s_pages[i]);
         s_pages[i].content = ui_make_content(root);
         s_pages[i].hint = ui_make_hint(root,
             (s_page_hints[i] != NULL) ? s_page_hints[i] : "");
@@ -1946,8 +1985,7 @@ void ui_pages_init(lv_obj_t *parent)
     for (i = 0; i < PAGE_BOOK_COUNT - PAGE_BOOKSHELF; i++) {
         lv_obj_t *root = ui_make_root(parent);
         s_book_pages[i].root = root;
-        s_book_pages[i].status = ui_make_status(root, "                  ",
-                                               &s_book_pages[i].status_label);
+        s_book_pages[i].status = ui_make_status(root, &s_book_pages[i]);
         s_book_pages[i].content = ui_make_content(root);
         s_book_pages[i].hint = ui_make_hint(root, s_book_hints[i]);
         if (s_book_builders[i] != NULL) {
@@ -2518,6 +2556,13 @@ void ui_pages_refresh_bookshelf(void)
     lv_obj_t *title = ui_make_label(content, "我的书架", true);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
 
+    /* 内容区右上：今日剩多少分（模拟屏 PAGE_BOOKSHELF 同一位置） */
+    lv_obj_t *quota = ui_make_label(content, "", false);
+    lv_obj_set_width(quota, 150);
+    lv_obj_set_style_text_align(quota, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_align(quota, LV_ALIGN_TOP_RIGHT, 0, 4);
+    s_bookshelf_quota_label = quota;
+
     /* 进度表与护栏配置：书架要显示每本书的实时进度、今天还能读多久 */
     ui_book_load_marks();
     if (!s_book_guard_loaded) {
@@ -2564,9 +2609,8 @@ void ui_pages_refresh_bookshelf(void)
         s_book_count++;
     }
 
-    /* 状态栏：今天还能读多久（doc/07 §4.1） */
-    lv_obj_t *status = s_book_pages[PAGE_BOOKSHELF - PAGE_BOOKSHELF].status_label;
-    if (status != NULL) {
+    /* 内容区右上：今天还能读多久（doc/07 §4.1） */
+    if (s_bookshelf_quota_label != NULL) {
         char sbuf[32];
         if (s_book_guard.daily_limit_min > 0) {
             int used_min = (int)(s_bookmarks.daily_used_sec / 60u);
@@ -2578,7 +2622,7 @@ void ui_pages_refresh_bookshelf(void)
         } else {
             snprintf(sbuf, sizeof(sbuf), "今日不限");
         }
-        lv_label_set_text(status, sbuf);
+        lv_label_set_text(s_bookshelf_quota_label, sbuf);
     }
     if (s_book_count == 0) {
         lv_obj_t *empty = ui_make_label(content, "还没有下载内容", false);
@@ -2753,18 +2797,17 @@ static int ui_reader_render(void)
     s_reader_consumed = consumed;
     lv_label_set_text(s_reader_body, buf);
 
-    lv_obj_t *status = s_book_pages[PAGE_READER - PAGE_BOOKSHELF].status_label;
-    if (status != NULL) {
+    if (s_reader_progress_label != NULL) {
         /* 实时重算进度，绝不信 JSON 里的 percent（doc/07 §2.3） */
         int pct = ui_book_progress_percent(s_reader_offset, s_reader_size);
         char sbuf[64];
         const char *chapter = ui_current_chapter_title();
         if (chapter[0] != '\0') {
-            snprintf(sbuf, sizeof(sbuf), "%s · %d%%", chapter, pct);
+            snprintf(sbuf, sizeof(sbuf), "%s · 已读 %d%%", chapter, pct);
         } else {
             snprintf(sbuf, sizeof(sbuf), "已读 %d%%", pct);
         }
-        lv_label_set_text(status, sbuf);
+        lv_label_set_text(s_reader_progress_label, sbuf);
     }
     return 0;
 }
@@ -3195,18 +3238,84 @@ int ui_pages_book_jump_select(void)
     return ui_reader_seek(raw);
 }
 
-/* ===================== 状态栏 ===================== */
+/* ===================== 状态栏（三格） ===================== */
 
-void ui_pages_set_status(ui_page_t page, const char *text)
+/*
+ * 顶栏三格（doc/03 §二 骨架 + §10 顶栏口径）：
+ *   左 = 天气，中 = Wi-Fi 连接状态，右 = 电量百分比。
+ *
+ * 三格**对所有页面是同一份内容** —— 天气来自服务端心跳，Wi-Fi 与电量来自设备自身，
+ * 都不是页面级信息。页面自己的信息（今日剩多少分 / 读到哪了）画在内容区。
+ *
+ * 这里缓存一份内容，写入时只刷真正变了的格子：LVGL 每次 set_text 都会重排文字，
+ * 顶栏每页各有一份，18 页一起刷没有必要。
+ */
+static char s_status_weather[64];
+static char s_status_wifi[48];
+static char s_status_battery[16];
+static bool s_status_battery_warn = false;
+
+/** 把三格写进一个页面的顶栏。 */
+static void ui_status_write(ui_page_widgets_t *w)
 {
-    if (page < 0 || page >= (int)PAGE_COUNT) {
-        return;
+    if (w->status_label != NULL) {
+        lv_label_set_text(w->status_label, s_status_weather);
+        lv_obj_set_style_text_color(w->status_label, UI_C_TEXT, 0);
     }
-    if (s_pages[page].status_label == NULL) {
-        return;
+    if (w->status_mid_label != NULL) {
+        lv_label_set_text(w->status_mid_label, s_status_wifi);
+        lv_obj_set_style_text_color(w->status_mid_label, UI_C_TEXT, 0);
     }
-    lv_label_set_text(s_pages[page].status_label, (text != NULL) ? text : "");
+    if (w->status_right_label != NULL) {
+        lv_label_set_text(w->status_right_label, s_status_battery);
+        lv_obj_set_style_text_color(w->status_right_label,
+                                    s_status_battery_warn ? UI_C_WARN : UI_C_TEXT, 0);
+    }
 }
+
+
+/**
+ * 写顶部状态栏三格（天气 / Wi-Fi / 电量）。
+ *
+ * 内容对所有页面一致，所以一次写入全部页面 —— 切页时不用再补写。
+ * 三格都没变就直接返回（不重排文字）。
+ */
+void ui_pages_set_status(const char *weather, const char *wifi, int battery_pct)
+{
+    char bat[16];
+    const char *w = (weather != NULL) ? weather : "";
+    const char *f = (wifi != NULL) ? wifi : "";
+    bool warn;
+
+    /* 电量格与模拟屏同格式：[85%]；低于 15% 转告警色 */
+    if (battery_pct >= 0) {
+        snprintf(bat, sizeof(bat), "[%d%%]", battery_pct);
+    } else {
+        bat[0] = '\0';
+    }
+    warn = (battery_pct >= 0 && battery_pct < 15);
+
+    if (strcmp(s_status_weather, w) == 0 && strcmp(s_status_wifi, f) == 0 &&
+        strcmp(s_status_battery, bat) == 0 && warn == s_status_battery_warn) {
+        return;
+    }
+    snprintf(s_status_weather, sizeof(s_status_weather), "%s", w);
+    snprintf(s_status_wifi, sizeof(s_status_wifi), "%s", f);
+    snprintf(s_status_battery, sizeof(s_status_battery), "%s", bat);
+    s_status_battery_warn = warn;
+
+    int i;
+    for (i = 0; i < PAGE_COUNT; i++) {
+        if (i == PAGE_OOBE) {
+            continue;   /* 引导页是整屏品牌图，顶栏让位（与模拟屏一致） */
+        }
+        ui_status_write(&s_pages[i]);
+    }
+    for (i = 0; i < PAGE_BOOK_COUNT - PAGE_BOOKSHELF; i++) {
+        ui_status_write(&s_book_pages[i]);
+    }
+}
+
 
 /* ===================== 解析结果页 ===================== */
 

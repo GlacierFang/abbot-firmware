@@ -626,6 +626,77 @@ bool net_wifi_get_saved_ssid(char *out, size_t cap)
     return true;
 }
 
+/* ===================== 设备状态快照（顶部状态栏用） ===================== */
+
+/*
+ * Core 0（网络任务）采集，Core 1（UI 核）只读副本。
+ *
+ * 电量读 MAX17043 走 I2C，**不能在 UI 核读**：MAX17043 与 OV5640 共享
+ * I2C_NUM_0，拍照期间总线被占，hal_power_read_battery 拿不到锁就超时。
+ * Wi-Fi 状态同理 —— 驱动只在网络任务里碰。
+ *
+ * 跨核拷贝用 seq 号做 seqlock：写方先 +1（奇数 = 正在写），写完再 +1（偶数）；
+ * 读方读到奇数或前后 seq 不一致就重读一次。
+ */
+static net_device_status_t s_dev_status;
+static volatile uint32_t s_dev_status_seq = 0;
+static int s_battery_soc = -1;   /* 电量缓存：Core 0 私有 */
+
+void net_poll_device_status(void)
+{
+    uint32_t now = millis();
+    static uint32_t next_batt_ms = 0;
+    net_device_status_t st;
+
+    st.wifi_state = (int)net_wifi_get_state();
+    st.ssid[0] = '\0';
+    if (st.wifi_state == WIFI_STATE_CONNECTED) {
+        /* 当前连接的 SSID = 本次连接请求里用的那个（连上时写进了 NVS）。 */
+        net_str_copy(st.ssid, sizeof(st.ssid), g_conn_ssid_cur);
+    }
+    st.battery_soc = s_battery_soc;
+
+    /* 电量读 I2C：60 秒一次 —— 够用，也别在总线上挤摄像头。 */
+    if ((int32_t)(now - next_batt_ms) >= 0) {
+        next_batt_ms = now + 60000;
+        float volts = 0.0f;
+        uint8_t soc = 0;
+        if (hal_power_read_battery(&volts, &soc) == HAL_OK) {
+            s_battery_soc = (int)soc;
+            st.battery_soc = s_battery_soc;
+        }
+    }
+
+    s_dev_status_seq++;            /* 奇数 = 正在写 */
+    __sync_synchronize();
+    s_dev_status = st;
+    __sync_synchronize();
+    s_dev_status_seq++;            /* 偶数 = 写完 */
+}
+
+bool net_get_device_status(net_device_status_t *out)
+{
+    if (out == NULL) {
+        return false;
+    }
+    int i;
+    for (i = 0; i < 3; i++) {
+        uint32_t s1 = s_dev_status_seq;
+        __sync_synchronize();
+        if ((s1 & 1u) != 0u) {
+            continue;              /* 写方正在写，重读 */
+        }
+        *out = s_dev_status;
+        __sync_synchronize();
+        if (s_dev_status_seq == s1) {
+            return true;          /* 拷贝期间没被改过，有效 */
+        }
+    }
+    /* 连续三次撞上写入：**不动 out** —— 半截快照比旧快照更糟
+     * （SSID 可能被抄成半行乱码，直接上屏）。调用方应沿用自己上一次的副本。 */
+    return false;
+}
+
 bool net_wifi_connect_and_save(const char *ssid, const char *password)
 {
     if (ssid == NULL || ssid[0] == '\0') {

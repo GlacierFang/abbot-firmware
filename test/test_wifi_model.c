@@ -266,6 +266,48 @@ static void test_format_row(void)
     CHECK(strstr(out, "一一一一一一") == NULL);
 }
 
+static void test_format_chip(void)
+{
+    char out[64];
+
+    wifi_model_format_chip(out, sizeof(out), WIFI_CHIP_DISCONNECTED, "");
+    CHECK(strcmp(out, "WiFi 未连接") == 0);
+
+    wifi_model_format_chip(out, sizeof(out), WIFI_CHIP_SCANNING, "");
+    CHECK(strcmp(out, "WiFi 搜索中") == 0);
+
+    wifi_model_format_chip(out, sizeof(out), WIFI_CHIP_CONNECTING, "");
+    CHECK(strcmp(out, "WiFi 连接中") == 0);
+
+    wifi_model_format_chip(out, sizeof(out), WIFI_CHIP_CONNECTED, "Home_5G");
+    CHECK(strcmp(out, "WiFi Home_5G") == 0);
+
+    /* 已连接但读不到 SSID */
+    wifi_model_format_chip(out, sizeof(out), WIFI_CHIP_CONNECTED, "");
+    CHECK(strcmp(out, "WiFi 已连接") == 0);
+
+    /* 超长 SSID 截断且带省略号 */
+    wifi_model_format_chip(out, sizeof(out), WIFI_CHIP_CONNECTED, "0123456789ABCDEF");
+    CHECK(strstr(out, "…") != NULL);
+    CHECK(strstr(out, "WiFi 0123456789…") == out);
+
+    /* 汉字 SSID 按字符数截断（12 字 > 上限 10 字），且不劈开汉字 */
+    wifi_model_format_chip(out, sizeof(out), WIFI_CHIP_CONNECTED, "一二三四五六七八九十十一十二");
+    CHECK(strstr(out, "…") != NULL);
+    {
+        /* "WiFi " + 10 个汉字(30 字节) + 省略号(3 字节) */
+        size_t i = strlen(out);
+        CHECK(i == strlen("WiFi ") + 30 + 3);
+        /* 前 10 个汉字必须是完整的「一二三四五六七八九十」 */
+        CHECK(strncmp(out + strlen("WiFi "), "一二三四五六七八九十", 30) == 0);
+    }
+
+    /* 9 个汉字不超限，不该带省略号 */
+    wifi_model_format_chip(out, sizeof(out), WIFI_CHIP_CONNECTED, "一二三四五六七八九");
+    CHECK(strstr(out, "…") == NULL);
+    CHECK(strcmp(out, "WiFi 一二三四五六七八九") == 0);
+}
+
 int main(void)
 {
     test_signal_level();
@@ -275,6 +317,7 @@ int main(void)
     test_format_row();
     test_conn_state_machine();
     test_hint_is_user_friendly();
+    test_format_chip();
 
     if (g_fail == 0) {
         printf("ALL PASS\n");

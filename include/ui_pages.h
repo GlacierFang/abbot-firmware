@@ -182,9 +182,16 @@ bool ui_pages_keyboard_tick(uint32_t now_ms);
 /** 退出键盘页：清掉内存里的输入内容。 */
 void ui_pages_keyboard_leave(void);
 
-/* ---------- 状态栏 ---------- */
-/** 设置某页状态栏文字（例如离线提示）。 */
-void ui_pages_set_status(ui_page_t page, const char *text);
+/* ---------- 顶栏三格（doc/03 §二 三区骨架） ---------- */
+/**
+ * 写顶部状态栏三格：左 = 天气，中 = Wi-Fi，右 = 电量百分比。
+ *
+ * 三格**对所有页面是同一份内容** —— 天气来自服务端心跳，Wi-Fi 与电量来自设备自身，
+ * 都不是页面级信息，所以一次写全部页面，切页时不用补写。
+ * 天气传 NULL = 留空；电量传负数 = 还没读到，留空。
+ * 三格都没变则不重排文字（LVGL 每次 set_text 都会重排）。
+ */
+void ui_pages_set_status(const char *weather, const char *wifi, int battery_pct);
 
 /* ---------- 学科卡片（doc/04 §四） ---------- */
 /** 刷新学科包列表（读卡上 /subjects 下的真实学科包）。 */

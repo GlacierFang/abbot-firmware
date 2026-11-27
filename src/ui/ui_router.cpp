@@ -25,6 +25,7 @@
 #include "ui_ota_page.h"
 #include "ui_shutdown.h"
 #include "ui_weather.h"
+#include "wifi_model.h"
 #include "voice_capture.h"
 
 #include "hal_interfaces.h"   /* 背光、音频（Arduino.h 也从这里进来） */
@@ -99,6 +100,7 @@ static void ui_paired_refresh(void);
  * 必须放在使用点之前：ui_weather_handle_reply() 内部会调它们。 */
 static void ui_weather_save_cache(const nr_weather_t *w);
 static void ui_weather_refresh_display(void);
+static void ui_status_refresh(void);
 static void ui_heartbeat_post(void);
 
 /* ===================== 天气与城市（doc/05 §5.2） ===================== */
@@ -195,13 +197,39 @@ static void ui_weather_load_cache(void)
     }
 }
 
-/** 刷新首页上的天气文案。 */
+/**
+ * 顶栏三格：天气 / Wi-Fi / 电量（doc/03 §二 三区骨架）。
+ *
+ * 三格都不是页面级信息 —— 天气来自服务端心跳，Wi-Fi 与电量来自设备自身，
+ * 所以全局只有这一份，切页时不用补写。电量与 Wi-Fi 状态由网络任务采集
+ * （电量走 I2C，与摄像头共用总线，不能在 UI 核读），UI 只读快照。
+ */
+static void ui_status_refresh(void)
+{
+    char wx[64];
+    char wifi[64];
+    static net_device_status_t s_status_st = { WIFI_STATE_DISCONNECTED, { 0 }, -1 };
+    net_device_status_t st = s_status_st;
+
+    ui_weather_display_text(s_weather_state, &s_weather_live, &s_weather_cached,
+                            wx, sizeof(wx));
+
+    /* 撞上网络任务在写时沿用上一份 —— 半截快照不上屏 */
+    if (!net_get_device_status(&st)) {
+        st = s_status_st;
+    } else {
+        s_status_st = st;
+    }
+    wifi_model_format_chip(wifi, sizeof(wifi), st.wifi_state, st.ssid);
+
+    ui_pages_set_status(wx, wifi, st.battery_soc);
+}
+
+/** 刷新天气文案（顶栏左格）。 */
 static void ui_weather_refresh_display(void)
 {
-    char buf[64];
-    ui_weather_display_text(s_weather_state, &s_weather_live, &s_weather_cached,
-                            buf, sizeof(buf));
-    ui_pages_set_weather_text(buf);
+    /* 顶栏左格就是天气 —— 心跳一更新就跟着换 */
+    ui_status_refresh();
 }
 
 /* ---- 城市 ---- */
@@ -1076,6 +1104,14 @@ void ui_router_tick(void)
      * 番茄钟的倒计时挂在这里 —— 用毫秒计数，不做秒级累加。 */
     uint32_t now = (uint32_t)millis();
     ui_pages_pomodoro_tick(now);
+
+    /* 顶栏三格每秒刷一次（doc/03 §二 顶部状态栏刷新约束）：
+     * 天气 / Wi-Fi / 电量都不是页面级信息，全局只有这一份。 */
+    static uint32_t s_status_next_ms = 0;
+    if ((int32_t)(now - s_status_next_ms) >= 0) {
+        s_status_next_ms = now + 1000;
+        ui_status_refresh();
+    }
 
     /* 关机时序：待确认态 → 收尾 → 背光淡出 → 深睡（doc/02 §3.6）。
      * 只在 RUNNING 态才有实际动作；待确认态靠 ui_shutdown_armed() 判。 */

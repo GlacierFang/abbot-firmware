@@ -72,6 +72,7 @@ const ui_city_candidate_t *ui_weather_city_find_by_wire(const char *wire);
 char *ui_weather_display_text(ui_weather_state_t state, const nr_weather_t *live,
                                const nr_weather_t *cached, char *out, size_t out_cap);
 
+
 /**
  * 城市名校验（能不能拿去上报）。
  *

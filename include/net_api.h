@@ -196,6 +196,30 @@ int net_wifi_connect_result(void);
 /** 读已保存网络的 SSID（给 UI 标「★」）。没保存过返回 false。 */
 bool net_wifi_get_saved_ssid(char *out, size_t cap);
 
+/* ---------- 设备状态快照（顶部状态栏用） ---------- */
+/**
+ * 顶栏三格需要的三样数据：Wi-Fi 状态与已连 SSID、电量百分比。
+ *
+ * **由网络任务（Core 0）采集，UI 核只读副本** —— UI 不直接读 I2C 电量计
+ * （MAX17043 与摄像头共用 I2C，拍照期间读会超时并阻塞 LVGL 任务），
+ * 也不直接问 Wi-Fi 驱动。抄一份出来，避免两边同时改同一个结构体。
+ */
+typedef struct {
+    int wifi_state;   /* WifiConnState */
+    char ssid[33];    /* 已连接的 SSID；没连上时是空串 */
+    int battery_soc;  /* 电量百分比；-1 = 还没读到 */
+} net_device_status_t;
+
+/** 网络任务调用：按节拍刷新状态快照（电量 60 秒读一次 I2C）。 */
+void net_poll_device_status(void);
+/**
+ * UI 核调用：取一份状态快照副本。
+ *
+ * 返回 false = 正好撞上网络任务在写（**out 未被改动**，调用方沿用上一份即可）。
+ * 宁可显示上一次的旧值，也不要半截数据上屏。
+ */
+bool net_get_device_status(net_device_status_t *out);
+
 /* ---------- 关机：停 Wi-Fi（doc/02 §3.6 关机契约） ----------
  *
  * 跨核铁律同 §4.1：UI 核（Core 1）只发请求，网络任务（Core 0）执行关射频。
